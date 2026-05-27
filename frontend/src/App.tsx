@@ -1,5 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
-import type { DBServiceApi, DBStats } from "./types/wails";
+import { useEffect, useState } from "react";
+import {
+  Compact,
+  Delete,
+  Get,
+  GetStats,
+  Scan,
+  Set as SetKV
+} from "./wailsjs/go/bridge/DBService";
+import { bridge } from "./wailsjs/go/models";
+
+type DBStats = bridge.Stats;
 
 type KVRow = {
   key: string;
@@ -18,13 +28,7 @@ function formatBytes(bytes: number): string {
   return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
-function getApi(): DBServiceApi | null {
-  return window.go?.bridge?.DBService ?? null;
-}
-
 export default function App() {
-  const api = useMemo(() => getApi(), []);
-
   const [key, setKey] = useState<string>("");
   const [value, setValue] = useState<string>("");
   const [readValue, setReadValue] = useState<string>("");
@@ -38,20 +42,17 @@ export default function App() {
   const [scanNextAfter, setScanNextAfter] = useState<string>("");
 
   async function refreshStats() {
-    if (!api) return;
-    const st = await api.GetStats();
+    const st = await GetStats();
     setStats(st);
   }
 
   async function refreshKeys() {
-    if (!api) return;
-    const res = await api.Scan({ prefix: keyPrefix, after: scanAfter, limit: 200 });
+    const res = await Scan({ prefix: keyPrefix, after: scanAfter, limit: 200 } as bridge.ScanOptions);
     setKeys(res.keys);
     setScanNextAfter(res.nextAfter);
   }
 
   useEffect(() => {
-    if (!api) return;
     void refreshStats();
     void refreshKeys();
     const id = window.setInterval(() => {
@@ -59,32 +60,23 @@ export default function App() {
     }, 1000);
     return () => window.clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api]);
+  }, []);
 
   useEffect(() => {
-    if (!api) return;
     void refreshKeys();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api, keyPrefix, scanAfter]);
+  }, [keyPrefix, scanAfter]);
 
   async function onGet() {
-    if (!api) {
-      setStatus("Wails bindings not available yet. Run `wails dev` to generate bindings.");
-      return;
-    }
     setStatus("");
-    const v = await api.Get(key);
+    const v = await Get(key);
     setReadValue(v);
     setStatus(v ? "OK" : "Key not found");
   }
 
   async function onSet() {
-    if (!api) {
-      setStatus("Wails bindings not available yet. Run `wails dev` to generate bindings.");
-      return;
-    }
     setStatus("");
-    await api.Set(key, value);
+    await SetKV(key, value);
     setRecent((prev) => [{ key, value }, ...prev].slice(0, 20));
     await refreshStats();
     await refreshKeys();
@@ -92,24 +84,16 @@ export default function App() {
   }
 
   async function onDelete() {
-    if (!api) {
-      setStatus("Wails bindings not available yet. Run `wails dev` to generate bindings.");
-      return;
-    }
     setStatus("");
-    await api.Delete(key);
+    await Delete(key);
     await refreshStats();
     await refreshKeys();
     setStatus("Deleted (tombstone)");
   }
 
   async function onCompact() {
-    if (!api) {
-      setStatus("Wails bindings not available yet. Run `wails dev` to generate bindings.");
-      return;
-    }
     setStatus("Compacting…");
-    await api.Compact();
+    await Compact();
     await refreshStats();
     await refreshKeys();
     setStatus("Compaction complete");
@@ -232,8 +216,7 @@ export default function App() {
                         setSelectedKey(k);
                         setKey(k);
                         void (async () => {
-                          if (!api) return;
-                          const v = await api.Get(k);
+                          const v = await Get(k);
                           setReadValue(v);
                         })();
                       }}
