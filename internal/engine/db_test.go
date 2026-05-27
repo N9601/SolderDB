@@ -161,20 +161,3 @@ func TestCompactionReducesSSTableCount(t *testing.T) {
 		t.Fatalf("expected 1 sstable after compaction, got %d", st2.SSTableCount)
 	}
 }
-
-	keys, err := db.ListKeys(ListKeysOptions{})
-	if err != nil {
-		t.Fatalf("listkeys: %v", err)
-	}
-	if len(keys) != 1 || keys[0] != "beta" {
-		t.Fatalf("expected [beta], got %v", keys)
-	}
-
-	prefixKeys, err := db.ListKeys(ListKeysOptions{Prefix: "b"})
-	if err != nil {
-		t.Fatalf("listkeys prefix: %v", err)
-	}
-	if len(prefixKeys) != 1 || prefixKeys[0] != "beta" {
-		t.Fatalf("expected [beta], got %v", prefixKeys)
-	}
-}
