@@ -164,6 +164,53 @@ func TestCompactionReducesSSTableCount(t *testing.T) {
 	}
 }
 
+func TestWALCorruptedTailIsIgnored(t *testing.T) {
+	dir := t.TempDir()
+	db, err := Open(Options{DataDir: dir})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if err := db.Set("good", "value"); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	// Append garbage to WAL — simulates a torn write at the tail.
+	walPath := filepath.Join(dir, "wal.bin")
+	f, err := os.OpenFile(walPath, os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		t.Fatalf("open wal: %v", err)
+	}
+	// Write a header that looks valid (opSet, keyLen=3, valLen=3) with a wrong CRC.
+	garbage := []byte{
+		1,             // opSet
+		3, 0, 0, 0,    // keyLen
+		3, 0, 0, 0,    // valLen
+		0xff, 0xff, 0xff, 0xff, // bad CRC
+		'b', 'a', 'd',
+		'x', 'y', 'z',
+	}
+	if _, err := f.Write(garbage); err != nil {
+		t.Fatalf("write garbage: %v", err)
+	}
+	_ = f.Close()
+
+	db2, err := Open(Options{DataDir: dir})
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer func() { _ = db2.Close() }()
+
+	if v, ok := db2.Get("good"); !ok || v != "value" {
+		t.Fatalf("expected good=value after replay, got %q ok=%v", v, ok)
+	}
+	if _, ok := db2.Get("bad"); ok {
+		t.Fatalf("corrupted tail record should have been ignored")
+	}
+}
+
 // Run with `go test -race ./...` once cgo is available to catch any
 // concurrency bugs. Without -race this still exercises every lock path
 // and surfaces deadlocks or panics under load.

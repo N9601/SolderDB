@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"os"
 	"path/filepath"
@@ -13,6 +14,8 @@ import (
 	"sync"
 	"time"
 )
+
+var crcTable = crc32.MakeTable(crc32.Castagnoli)
 
 type opCode byte
 
@@ -429,7 +432,8 @@ func (db *DB) Compact() error {
 }
 
 // WAL record format (binary, little-endian):
-// [1 byte opcode][4 bytes keyLen][4 bytes valLen][key bytes][value bytes]
+// [1 byte opcode][4 bytes keyLen][4 bytes valLen][4 bytes crc32c][key bytes][value bytes]
+// CRC32C covers [opcode][keyLen][valLen][key][value].
 func (db *DB) appendWAL(op opCode, key, value string) error {
 	if db.walW == nil {
 		return errors.New("wal not initialized")
@@ -446,8 +450,20 @@ func (db *DB) appendWAL(op opCode, key, value string) error {
 	binary.LittleEndian.PutUint32(header[1:5], uint32(len(keyB)))
 	binary.LittleEndian.PutUint32(header[5:9], uint32(len(valB)))
 
+	h := crc32.New(crcTable)
+	_, _ = h.Write(header[:])
+	_, _ = h.Write(keyB)
+	if len(valB) > 0 {
+		_, _ = h.Write(valB)
+	}
+	var crcBuf [4]byte
+	binary.LittleEndian.PutUint32(crcBuf[:], h.Sum32())
+
 	if _, err := db.walW.Write(header[:]); err != nil {
 		return fmt.Errorf("wal write header: %w", err)
+	}
+	if _, err := db.walW.Write(crcBuf[:]); err != nil {
+		return fmt.Errorf("wal write crc: %w", err)
 	}
 	if _, err := db.walW.Write(keyB); err != nil {
 		return fmt.Errorf("wal write key: %w", err)
@@ -502,6 +518,15 @@ func (db *DB) replayWAL() error {
 			return errors.New("wal record exceeds size limits")
 		}
 
+		var crcBuf [4]byte
+		if _, err := io.ReadFull(r, crcBuf[:]); err != nil {
+			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+				break
+			}
+			return fmt.Errorf("wal read crc: %w", err)
+		}
+		want := binary.LittleEndian.Uint32(crcBuf[:])
+
 		key := make([]byte, keyLen)
 		if _, err := io.ReadFull(r, key); err != nil {
 			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
@@ -518,6 +543,22 @@ func (db *DB) replayWAL() error {
 				}
 				return fmt.Errorf("wal read value: %w", err)
 			}
+		}
+
+		// Verify CRC. A mismatch on the tail record means torn write — stop here.
+		h := crc32.New(crcTable)
+		var hdr [1 + 4 + 4]byte
+		hdr[0] = opByte
+		binary.LittleEndian.PutUint32(hdr[1:5], keyLen)
+		binary.LittleEndian.PutUint32(hdr[5:9], valLen)
+		_, _ = h.Write(hdr[:])
+		_, _ = h.Write(key)
+		if valLen > 0 {
+			_, _ = h.Write(value)
+		}
+		if h.Sum32() != want {
+			// Torn or corrupt record — stop replay, leave earlier records applied.
+			break
 		}
 
 		switch opCode(opByte) {
