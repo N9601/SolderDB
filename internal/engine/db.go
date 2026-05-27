@@ -197,6 +197,11 @@ func (db *DB) Close() error {
 	}
 	db.walW = nil
 	db.walFile = nil
+
+	for _, t := range db.sstables {
+		_ = t.close()
+	}
+	db.sstables = nil
 	return firstErr
 }
 
@@ -355,20 +360,21 @@ func (db *DB) Compact() error {
 	}
 
 	db.mu.Lock()
-	oldPaths := make([]string, 0, len(db.sstables))
+	oldTables := append([]*sstable(nil), db.sstables...)
 	for _, t := range db.sstables {
-		oldPaths = append(oldPaths, t.path)
+		// no-op
 	}
 	db.sstables = []*sstable{newTable}
 	db.mu.Unlock()
 
 	// Best-effort delete old SSTables. If deletion fails (e.g., antivirus lock),
 	// the new table is still active and old files can be cleaned later.
-	for _, p := range oldPaths {
-		if p == newPath {
+	for _, t := range oldTables {
+		if t.path == newPath {
 			continue
 		}
-		_ = os.Remove(p)
+		_ = t.close()
+		_ = os.Remove(t.path)
 	}
 
 	return nil
@@ -499,9 +505,19 @@ func (db *DB) recomputeMemBytesLocked() {
 
 type sstable struct {
 	path string
+	f    *os.File
 	// Sorted keys and offsets into the data section.
 	keys    []string
 	offsets []uint64
+}
+
+func (t *sstable) close() error {
+	if t.f == nil {
+		return nil
+	}
+	err := t.f.Close()
+	t.f = nil
+	return err
 }
 
 type sstRecord struct {
@@ -550,44 +566,52 @@ func openSSTable(path string) (*sstable, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open sstable: %w", err)
 	}
-	defer f.Close()
 
 	fi, err := f.Stat()
 	if err != nil {
+		_ = f.Close()
 		return nil, fmt.Errorf("stat sstable: %w", err)
 	}
 	if fi.Size() < int64(len(sstMagic)+4+4+8+len(sstFooterMagic)) {
+		_ = f.Close()
 		return nil, fmt.Errorf("sstable too small: %s", path)
 	}
 
 	// Read header: magic(8) + version(u32) + count(u32)
 	header := make([]byte, 8+4+4)
 	if _, err := io.ReadFull(f, header); err != nil {
+		_ = f.Close()
 		return nil, fmt.Errorf("read sstable header: %w", err)
 	}
 	if string(header[:8]) != sstMagic {
+		_ = f.Close()
 		return nil, fmt.Errorf("sstable bad magic: %s", path)
 	}
 	if binary.LittleEndian.Uint32(header[8:12]) != sstVersion {
+		_ = f.Close()
 		return nil, fmt.Errorf("sstable unsupported version: %s", path)
 	}
 	count := binary.LittleEndian.Uint32(header[12:16])
 
 	// Read footer: [indexOffset u64][footerMagic 8]
 	if _, err := f.Seek(fi.Size()-int64(8+8), io.SeekStart); err != nil {
+		_ = f.Close()
 		return nil, fmt.Errorf("seek footer: %w", err)
 	}
 	var footer [16]byte
 	if _, err := io.ReadFull(f, footer[:]); err != nil {
+		_ = f.Close()
 		return nil, fmt.Errorf("read footer: %w", err)
 	}
 	indexOffset := binary.LittleEndian.Uint64(footer[0:8])
 	if string(footer[8:16]) != sstFooterMagic {
+		_ = f.Close()
 		return nil, fmt.Errorf("sstable bad footer magic: %s", path)
 	}
 
 	// Read index
 	if _, err := f.Seek(int64(indexOffset), io.SeekStart); err != nil {
+		_ = f.Close()
 		return nil, fmt.Errorf("seek index: %w", err)
 	}
 	r := bufio.NewReaderSize(f, 64*1024)
@@ -597,45 +621,43 @@ func openSSTable(path string) (*sstable, error) {
 	for i := uint32(0); i < count; i++ {
 		var klBuf [4]byte
 		if _, err := io.ReadFull(r, klBuf[:]); err != nil {
+			_ = f.Close()
 			return nil, fmt.Errorf("read index keyLen: %w", err)
 		}
 		kl := binary.LittleEndian.Uint32(klBuf[:])
 		if kl == 0 || kl > 16*1024*1024 {
+			_ = f.Close()
 			return nil, fmt.Errorf("sstable invalid index keyLen: %s", path)
 		}
 		kb := make([]byte, kl)
 		if _, err := io.ReadFull(r, kb); err != nil {
+			_ = f.Close()
 			return nil, fmt.Errorf("read index key: %w", err)
 		}
 		var offBuf [8]byte
 		if _, err := io.ReadFull(r, offBuf[:]); err != nil {
+			_ = f.Close()
 			return nil, fmt.Errorf("read index offset: %w", err)
 		}
 		keys = append(keys, string(kb))
 		offsets = append(offsets, binary.LittleEndian.Uint64(offBuf[:]))
 	}
 
-	return &sstable{path: path, keys: keys, offsets: offsets}, nil
+	return &sstable{path: path, f: f, keys: keys, offsets: offsets}, nil
 }
 
 func (t *sstable) readAll() ([]sstRecord, error) {
-	f, err := os.Open(t.path)
-	if err != nil {
-		return nil, fmt.Errorf("open sstable: %w", err)
-	}
-	defer f.Close()
-
-	fi, err := f.Stat()
+	fi, err := t.f.Stat()
 	if err != nil {
 		return nil, fmt.Errorf("stat sstable: %w", err)
 	}
 
 	// Read footer to learn indexOffset.
-	if _, err := f.Seek(fi.Size()-int64(8+8), io.SeekStart); err != nil {
+	if _, err := t.f.Seek(fi.Size()-int64(8+8), io.SeekStart); err != nil {
 		return nil, fmt.Errorf("seek footer: %w", err)
 	}
 	var footer [16]byte
-	if _, err := io.ReadFull(f, footer[:]); err != nil {
+	if _, err := io.ReadFull(t.f, footer[:]); err != nil {
 		return nil, fmt.Errorf("read footer: %w", err)
 	}
 	indexOffset := binary.LittleEndian.Uint64(footer[0:8])
@@ -645,11 +667,11 @@ func (t *sstable) readAll() ([]sstRecord, error) {
 
 	// Seek to start of data section (after header).
 	dataStart := int64(len(sstMagic) + 4 + 4)
-	if _, err := f.Seek(dataStart, io.SeekStart); err != nil {
+	if _, err := t.f.Seek(dataStart, io.SeekStart); err != nil {
 		return nil, fmt.Errorf("seek data: %w", err)
 	}
 
-	r := bufio.NewReaderSize(f, 64*1024)
+	r := bufio.NewReaderSize(t.f, 64*1024)
 	var out []sstRecord
 	bytesRead := uint64(dataStart)
 
@@ -723,53 +745,12 @@ func (t *sstable) get(key string) (value string, ok bool, deleted bool, err erro
 		return "", false, false, nil
 	}
 	offset := t.offsets[i]
-
-	f, err := os.Open(t.path)
-	if err != nil {
-		return "", false, false, err
-	}
-	defer f.Close()
-
-	if _, err := f.Seek(int64(offset), io.SeekStart); err != nil {
-		return "", false, false, err
-	}
-
-	r := bufio.NewReaderSize(f, 64*1024)
-	tomb, err := r.ReadByte()
-	if err != nil {
-		return "", false, false, err
-	}
-	var lens [8]byte
-	if _, err := io.ReadFull(r, lens[:]); err != nil {
-		return "", false, false, err
-	}
-	keyLen := binary.LittleEndian.Uint32(lens[0:4])
-	valLen := binary.LittleEndian.Uint32(lens[4:8])
-	if keyLen == 0 || keyLen > 16*1024*1024 || valLen > 64*1024*1024 {
-		return "", false, false, errors.New("sstable record size invalid")
-	}
-	kb := make([]byte, keyLen)
-	if _, err := io.ReadFull(r, kb); err != nil {
-		return "", false, false, err
-	}
-	if string(kb) != key {
-		return "", false, false, errors.New("sstable index mismatch")
-	}
-	vb := make([]byte, valLen)
-	if valLen > 0 {
-		if _, err := io.ReadFull(r, vb); err != nil {
-			return "", false, false, err
-		}
-	}
-	if tomb == 1 {
-		return "", true, true, nil
-	}
-	return string(vb), true, false, nil
+	return t.readAt(offset, key)
 }
 
 func (t *sstable) listKeys(prefix string) (keys []string, tombstones []string, err error) {
 	// For now, read by random access per key to learn tombstones.
-	// This is OK for small browsing; later we can cache tombstone bitsets or add a key-only index.
+	// This is OK for browsing; we avoid reading full values by checking tombstone bytes at offsets.
 	start := 0
 	if prefix != "" {
 		start = sort.Search(len(t.keys), func(i int) bool { return t.keys[i] >= prefix })
@@ -779,7 +760,7 @@ func (t *sstable) listKeys(prefix string) (keys []string, tombstones []string, e
 		if prefix != "" && (len(k) < len(prefix) || k[:len(prefix)] != prefix) {
 			break
 		}
-		_, ok, deleted, err := t.get(k)
+		deleted, ok, err := t.isTombstoneAt(t.offsets[i])
 		if err != nil {
 			return nil, nil, err
 		}
@@ -793,6 +774,60 @@ func (t *sstable) listKeys(prefix string) (keys []string, tombstones []string, e
 		keys = append(keys, k)
 	}
 	return keys, tombstones, nil
+}
+
+func (t *sstable) isTombstoneAt(offset uint64) (deleted bool, ok bool, err error) {
+	var b [1]byte
+	n, err := t.f.ReadAt(b[:], int64(offset))
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return false, false, nil
+		}
+		return false, false, err
+	}
+	if n != 1 {
+		return false, false, nil
+	}
+	return b[0] == 1, true, nil
+}
+
+func (t *sstable) readAt(offset uint64, key string) (value string, ok bool, deleted bool, err error) {
+	// Record header is 1(tomb)+4(keyLen)+4(valLen).
+	var hdr [9]byte
+	if _, err := t.f.ReadAt(hdr[:], int64(offset)); err != nil {
+		if errors.Is(err, io.EOF) {
+			return "", false, false, nil
+		}
+		return "", false, false, err
+	}
+	tomb := hdr[0]
+	keyLen := binary.LittleEndian.Uint32(hdr[1:5])
+	valLen := binary.LittleEndian.Uint32(hdr[5:9])
+	if keyLen == 0 || keyLen > 16*1024*1024 || valLen > 64*1024*1024 {
+		return "", false, false, errors.New("sstable record size invalid")
+	}
+
+	keyOff := int64(offset) + 9
+	kb := make([]byte, keyLen)
+	if _, err := t.f.ReadAt(kb, keyOff); err != nil {
+		return "", false, false, err
+	}
+	if string(kb) != key {
+		return "", false, false, errors.New("sstable index mismatch")
+	}
+
+	if tomb == 1 {
+		return "", true, true, nil
+	}
+
+	vb := make([]byte, valLen)
+	if valLen > 0 {
+		valOff := keyOff + int64(keyLen)
+		if _, err := t.f.ReadAt(vb, valOff); err != nil {
+			return "", false, false, err
+		}
+	}
+	return string(vb), true, false, nil
 }
 
 // flushMemtableToSSTableLocked flushes the current memtable into a new immutable SSTable.
