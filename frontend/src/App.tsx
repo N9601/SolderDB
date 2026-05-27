@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Compact,
   Delete,
@@ -11,10 +11,14 @@ import { bridge } from "./wailsjs/go/models";
 
 type DBStats = bridge.Stats;
 
-type KVRow = {
+type Row = {
   key: string;
-  value: string;
+  preview: string;
+  loading: boolean;
 };
+
+const PAGE_SIZE = 50;
+const PREVIEW_BYTES = 80;
 
 function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
@@ -28,28 +32,60 @@ function formatBytes(bytes: number): string {
   return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
+function truncate(s: string, n: number): string {
+  if (s.length <= n) return s;
+  return s.slice(0, n) + "…";
+}
+
 export default function App() {
   const [key, setKey] = useState<string>("");
   const [value, setValue] = useState<string>("");
   const [readValue, setReadValue] = useState<string>("");
-  const [status, setStatus] = useState<string>("");
+  const [status, setStatus] = useState<string>("READY");
   const [stats, setStats] = useState<DBStats | null>(null);
-  const [recent, setRecent] = useState<KVRow[]>([]);
+
   const [keyPrefix, setKeyPrefix] = useState<string>("");
-  const [keys, setKeys] = useState<string[]>([]);
-  const [selectedKey, setSelectedKey] = useState<string>("");
+  const [rows, setRows] = useState<Row[]>([]);
   const [scanAfter, setScanAfter] = useState<string>("");
   const [scanNextAfter, setScanNextAfter] = useState<string>("");
+  const [selectedKey, setSelectedKey] = useState<string>("");
+
+  const [writeLed, setWriteLed] = useState<boolean>(false);
+  const ledTimer = useRef<number | null>(null);
+
+  function flashWriteLed() {
+    setWriteLed(true);
+    if (ledTimer.current !== null) {
+      window.clearTimeout(ledTimer.current);
+    }
+    ledTimer.current = window.setTimeout(() => setWriteLed(false), 350);
+  }
 
   async function refreshStats() {
-    const st = await GetStats();
-    setStats(st);
+    try {
+      const st = await GetStats();
+      setStats(st);
+    } catch (e) {
+      setStatus(`STATS ERR: ${String(e)}`);
+    }
   }
 
   async function refreshKeys() {
-    const res = await Scan({ prefix: keyPrefix, after: scanAfter, limit: 200 } as bridge.ScanOptions);
-    setKeys(res.keys);
-    setScanNextAfter(res.nextAfter);
+    try {
+      const res = await Scan({
+        prefix: keyPrefix,
+        after: scanAfter,
+        limit: PAGE_SIZE
+      } as bridge.ScanOptions);
+      setScanNextAfter(res.nextAfter);
+      const initial: Row[] = res.keys.map((k) => ({ key: k, preview: "", loading: true }));
+      setRows(initial);
+      // Fetch previews in parallel but bounded.
+      const previews = await Promise.all(res.keys.map((k) => Get(k).catch(() => "")));
+      setRows(res.keys.map((k, i) => ({ key: k, preview: truncate(previews[i] ?? "", PREVIEW_BYTES), loading: false })));
+    } catch (e) {
+      setStatus(`SCAN ERR: ${String(e)}`);
+    }
   }
 
   useEffect(() => {
@@ -58,7 +94,10 @@ export default function App() {
     const id = window.setInterval(() => {
       void refreshStats();
     }, 1000);
-    return () => window.clearInterval(id);
+    return () => {
+      window.clearInterval(id);
+      if (ledTimer.current !== null) window.clearTimeout(ledTimer.current);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -68,223 +107,295 @@ export default function App() {
   }, [keyPrefix, scanAfter]);
 
   async function onGet() {
-    setStatus("");
-    const v = await Get(key);
-    setReadValue(v);
-    setStatus(v ? "OK" : "Key not found");
+    if (!key) {
+      setStatus("KEY REQUIRED");
+      return;
+    }
+    try {
+      const v = await Get(key);
+      setReadValue(v);
+      setStatus(v ? "READ OK" : "KEY NOT FOUND");
+    } catch (e) {
+      setStatus(`GET ERR: ${String(e)}`);
+    }
   }
 
   async function onSet() {
-    setStatus("");
-    await SetKV(key, value);
-    setRecent((prev) => [{ key, value }, ...prev].slice(0, 20));
-    await refreshStats();
-    await refreshKeys();
-    setStatus("Saved");
+    if (!key) {
+      setStatus("KEY REQUIRED");
+      return;
+    }
+    try {
+      await SetKV(key, value);
+      flashWriteLed();
+      setStatus(`SET ${key}`);
+      await Promise.all([refreshStats(), refreshKeys()]);
+    } catch (e) {
+      setStatus(`SET ERR: ${String(e)}`);
+    }
   }
 
   async function onDelete() {
-    setStatus("");
-    await Delete(key);
-    await refreshStats();
-    await refreshKeys();
-    setStatus("Deleted (tombstone)");
+    if (!key) {
+      setStatus("KEY REQUIRED");
+      return;
+    }
+    try {
+      await Delete(key);
+      flashWriteLed();
+      setStatus(`DEL ${key}`);
+      await Promise.all([refreshStats(), refreshKeys()]);
+    } catch (e) {
+      setStatus(`DEL ERR: ${String(e)}`);
+    }
   }
 
   async function onCompact() {
-    setStatus("Compacting…");
-    await Compact();
-    await refreshStats();
-    await refreshKeys();
-    setStatus("Compaction complete");
+    try {
+      setStatus("COMPACTING…");
+      await Compact();
+      setStatus("COMPACTION DONE");
+      await Promise.all([refreshStats(), refreshKeys()]);
+    } catch (e) {
+      setStatus(`COMPACT ERR: ${String(e)}`);
+    }
+  }
+
+  function selectRow(k: string) {
+    setSelectedKey(k);
+    setKey(k);
+    void (async () => {
+      try {
+        const v = await Get(k);
+        setReadValue(v);
+        setValue(v);
+      } catch {
+        // ignore
+      }
+    })();
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      <div className="mx-auto max-w-5xl px-6 py-8">
-        <header className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight">SolderDB</h1>
-          <p className="mt-1 text-sm text-zinc-400">
-            Local-first LSM engine (Memtable + WAL). Desktop admin GUI via Wails.
-          </p>
-        </header>
+    <div className="min-h-screen grid-overlay">
+      <div className="mx-auto max-w-6xl px-6 py-6">
+        <Header writeLed={writeLed} status={status} />
 
-        <section className="mb-6 rounded-xl border border-zinc-800 bg-zinc-900/30 p-4">
-          <h2 className="text-sm font-medium text-zinc-200">Metrics</h2>
-          <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
-            <Metric label="Keys" value={stats ? String(stats.keys) : "—"} />
-            <Metric label="Live keys" value={stats ? String(stats.liveKeys) : "—"} />
-            <Metric label="Tombstones" value={stats ? String(stats.tombstones) : "—"} />
-            <Metric label="Memtable" value={stats ? formatBytes(stats.memtableBytes) : "—"} />
-            <Metric label="WAL size" value={stats ? formatBytes(stats.walBytes) : "—"} />
-            <Metric label="SSTables" value={stats ? String(stats.ssTableCount) : "—"} />
-            <Metric label="Data dir" value={stats ? stats.dataDir : "—"} />
-            <Metric label="WAL path" value={stats ? stats.walPath : "—"} />
-            <Metric label="Status" value={status || "—"} />
-          </div>
-          <div className="mt-3">
-            <button
-              onClick={() => void onCompact()}
-              className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm"
-            >
-              Compact SSTables
-            </button>
-          </div>
-        </section>
-
-        <section className="mb-6 rounded-xl border border-zinc-800 bg-zinc-900/30 p-4">
-          <h2 className="text-sm font-medium text-zinc-200">Operations</h2>
-
-          <div className="mt-3 space-y-3">
-            <div>
-              <label className="text-xs text-zinc-400">Key</label>
-              <input
-                value={key}
-                onChange={(e) => setKey(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm outline-none"
-                placeholder="e.g. user:123"
-              />
+        <section className="mt-5">
+          <PanelHeader title="Engine Telemetry" right={<span className="chip">LSM · Memtable + WAL + SSTables</span>} />
+          <div className="panel p-4">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <Metric label="Live Keys" value={stats ? String(stats.liveKeys) : "—"} />
+              <Metric label="Tombstones" value={stats ? String(stats.tombstones) : "—"} />
+              <Metric label="Memtable" value={stats ? formatBytes(stats.memtableBytes) : "—"} />
+              <Metric label="WAL" value={stats ? formatBytes(stats.walBytes) : "—"} />
+              <Metric label="SSTables" value={stats ? String(stats.ssTableCount) : "—"} />
+              <Metric label="Total Keys" value={stats ? String(stats.keys) : "—"} />
+              <MetricMono label="Data Dir" value={stats?.dataDir ?? "—"} />
+              <MetricMono label="WAL Path" value={stats?.walPath ?? "—"} />
             </div>
-
-            <div>
-              <label className="text-xs text-zinc-400">Value (for Set)</label>
-              <textarea
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm outline-none"
-                placeholder="JSON, text, or any string"
-                rows={4}
-              />
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => void onGet()}
-                className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm"
-              >
-                Get
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button className="btn" onClick={() => void onCompact()}>
+                ⚙ Compact SSTables
               </button>
-              <button
-                onClick={() => void onSet()}
-                className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm"
-              >
-                Set
+              <button className="btn" onClick={() => void refreshStats()}>
+                ↻ Refresh
               </button>
-              <button
-                onClick={() => void onDelete()}
-                className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm"
-              >
-                Delete
-              </button>
-            </div>
-
-            <div>
-              <label className="text-xs text-zinc-400">Read result</label>
-              <div className="mt-1 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-200">
-                {readValue || "—"}
-              </div>
             </div>
           </div>
         </section>
 
-        <section className="mb-6 rounded-xl border border-zinc-800 bg-zinc-900/30 p-4">
-          <h2 className="text-sm font-medium text-zinc-200">Data browser</h2>
-
-          <div className="mt-3 space-y-3">
-            <div>
-              <label className="text-xs text-zinc-400">Key prefix filter</label>
-              <input
-                value={keyPrefix}
-                onChange={(e) => setKeyPrefix(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm outline-none"
-                placeholder="e.g. user:"
-              />
-              <div className="mt-2 text-xs text-zinc-500">
-                Showing up to 200 keys per page. Tombstoned keys are hidden.
+        <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-5">
+          <section className="lg:col-span-2">
+            <PanelHeader title="Console" right={<span className="chip">SET · GET · DEL</span>} />
+            <div className="panel space-y-3 p-4">
+              <div>
+                <label className="label">Key</label>
+                <input
+                  value={key}
+                  onChange={(e) => setKey(e.target.value)}
+                  className="field mt-1"
+                  placeholder="e.g. user:123"
+                  spellCheck={false}
+                />
+              </div>
+              <div>
+                <label className="label">Value</label>
+                <textarea
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
+                  className="field mt-1"
+                  placeholder="JSON, text, or any string"
+                  rows={5}
+                  spellCheck={false}
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button className="btn btn-primary" onClick={() => void onSet()}>
+                  ▶ Set
+                </button>
+                <button className="btn" onClick={() => void onGet()}>
+                  ◐ Get
+                </button>
+                <button className="btn btn-danger" onClick={() => void onDelete()}>
+                  ✕ Delete
+                </button>
+              </div>
+              <div>
+                <label className="label">Read Result</label>
+                <pre className="field mt-1 max-h-40 overflow-auto whitespace-pre-wrap">
+                  {readValue || "—"}
+                </pre>
               </div>
             </div>
+          </section>
 
-            <div className="rounded-lg border border-zinc-800 bg-zinc-950">
-              {keys.length === 0 ? (
-                <div className="px-3 py-2 text-sm text-zinc-500">No keys found.</div>
-              ) : (
-                <div className="max-h-56 overflow-auto">
-                  {keys.map((k) => (
-                    <button
-                      key={k}
-                      onClick={() => {
-                        setSelectedKey(k);
-                        setKey(k);
-                        void (async () => {
-                          const v = await Get(k);
-                          setReadValue(v);
-                        })();
-                      }}
-                      className="block w-full border-b border-zinc-900 px-3 py-2 text-left text-sm hover:bg-zinc-900/40"
-                    >
-                      <div className="truncate">{k}</div>
-                    </button>
-                  ))}
+          <section className="lg:col-span-3">
+            <PanelHeader
+              title="Data Browser"
+              right={
+                <span className="chip">
+                  {rows.length} {rows.length === 1 ? "key" : "keys"}
+                </span>
+              }
+            />
+            <div className="panel p-4">
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="flex-1 min-w-[200px]">
+                  <label className="label">Prefix Filter</label>
+                  <input
+                    value={keyPrefix}
+                    onChange={(e) => {
+                      setKeyPrefix(e.target.value);
+                      setScanAfter("");
+                    }}
+                    className="field mt-1"
+                    placeholder="e.g. user:"
+                    spellCheck={false}
+                  />
                 </div>
-              )}
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => {
-                  setScanAfter("");
-                  setSelectedKey("");
-                }}
-                className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm"
-              >
-                First page
-              </button>
-              <button
-                onClick={() => {
-                  if (!scanNextAfter) return;
-                  setScanAfter(scanNextAfter);
-                }}
-                disabled={!scanNextAfter}
-                className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm disabled:opacity-50"
-              >
-                Next page
-              </button>
-            </div>
-
-            <div className="text-xs text-zinc-500">
-              Selected: <span className="text-zinc-300">{selectedKey || "—"}</span>
-            </div>
-          </div>
-        </section>
-
-        <section className="rounded-xl border border-zinc-800 bg-zinc-900/30 p-4">
-          <h2 className="text-sm font-medium text-zinc-200">Recent writes</h2>
-          <div className="mt-3 space-y-2">
-            {recent.length === 0 ? (
-              <div className="text-sm text-zinc-500">No recent writes yet.</div>
-            ) : (
-              recent.map((r, idx) => (
-                <div
-                  key={`${r.key}:${idx}`}
-                  className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2"
+                <button
+                  className="btn"
+                  onClick={() => {
+                    setScanAfter("");
+                  }}
                 >
-                  <div className="text-xs text-zinc-400">{r.key}</div>
-                  <div className="mt-1 whitespace-pre-wrap text-sm text-zinc-200">{r.value}</div>
+                  ⤒ First
+                </button>
+                <button
+                  className="btn"
+                  disabled={!scanNextAfter}
+                  onClick={() => {
+                    if (scanNextAfter) setScanAfter(scanNextAfter);
+                  }}
+                >
+                  Next ▶
+                </button>
+              </div>
+
+              <div className="mt-3 overflow-hidden rounded-sm border border-gunmetal-700">
+                <div className="grid grid-cols-12 gap-2 border-b border-gunmetal-700 bg-gunmetal-850 px-3 py-2">
+                  <div className="label col-span-4">Key</div>
+                  <div className="label col-span-8">Value Preview</div>
                 </div>
-              ))
-            )}
-          </div>
-        </section>
+                <div className="max-h-[420px] overflow-auto">
+                  {rows.length === 0 ? (
+                    <div className="px-3 py-6 text-center text-sm text-silver-400">
+                      No keys match this filter.
+                    </div>
+                  ) : (
+                    rows.map((r) => {
+                      const isSelected = r.key === selectedKey;
+                      return (
+                        <button
+                          key={r.key}
+                          onClick={() => selectRow(r.key)}
+                          className={`grid w-full grid-cols-12 gap-2 border-b border-gunmetal-800 px-3 py-2 text-left transition-colors hover:bg-gunmetal-850 ${
+                            isSelected ? "bg-gunmetal-800" : ""
+                          }`}
+                        >
+                          <div className="col-span-4 truncate font-mono text-xs text-copper-300">
+                            {r.key}
+                          </div>
+                          <div className="col-span-8 truncate font-mono text-xs text-silver-200">
+                            {r.loading ? <span className="text-silver-400">…</span> : r.preview || <span className="text-silver-400">∅</span>}
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-2 text-[10px] uppercase tracking-widest text-silver-400">
+                Page size {PAGE_SIZE} · Preview {PREVIEW_BYTES}b · Tombstones hidden
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <footer className="mt-6 flex items-center justify-between text-[10px] uppercase tracking-widest text-silver-400">
+          <span>SolderDB · Local-First LSM Engine</span>
+          <span className="font-mono">v0.1.0</span>
+        </footer>
       </div>
+    </div>
+  );
+}
+
+function Header(props: { writeLed: boolean; status: string }) {
+  return (
+    <header className="panel flex items-center justify-between gap-4 px-4 py-3">
+      <div className="flex items-center gap-3">
+        <div className="flex h-9 w-9 items-center justify-center rounded-sm border border-copper-600 bg-gunmetal-950 text-copper-400 shadow-copper-glow">
+          <span className="font-mono text-sm font-bold">⚡</span>
+        </div>
+        <div>
+          <div className="font-mono text-base font-semibold tracking-wide text-silver-50">
+            SOLDER<span className="text-copper-400">DB</span>
+          </div>
+          <div className="text-[10px] uppercase tracking-widest text-silver-400">
+            Flux &amp; Iron · LSM Storage Engine
+          </div>
+        </div>
+      </div>
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          <span className={`led ${props.writeLed ? "" : "led-idle"}`} />
+          <span className="font-mono text-[10px] uppercase tracking-widest text-silver-300">
+            {props.writeLed ? "WRITE" : "IDLE"}
+          </span>
+        </div>
+        <div className="chip">{props.status}</div>
+      </div>
+    </header>
+  );
+}
+
+function PanelHeader(props: { title: string; right?: React.ReactNode }) {
+  return (
+    <div className="mb-2 flex items-center justify-between">
+      <h2 className="font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-silver-200">
+        ▍ {props.title}
+      </h2>
+      {props.right ?? null}
     </div>
   );
 }
 
 function Metric(props: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2">
-      <div className="text-xs text-zinc-500">{props.label}</div>
-      <div className="mt-1 truncate text-sm text-zinc-100">{props.value}</div>
+    <div className="rounded-sm border border-gunmetal-700 bg-gunmetal-950 px-3 py-2">
+      <div className="label">{props.label}</div>
+      <div className="metric-value mt-1">{props.value}</div>
+    </div>
+  );
+}
+
+function MetricMono(props: { label: string; value: string }) {
+  return (
+    <div className="rounded-sm border border-gunmetal-700 bg-gunmetal-950 px-3 py-2">
+      <div className="label">{props.label}</div>
+      <div className="metric-value-mono mt-1">{props.value}</div>
     </div>
   );
 }
