@@ -138,6 +138,28 @@ func (s *DBService) Snapshot() (string, error) {
 	return s.db.Snapshot()
 }
 
+type SnapshotInfo struct {
+	Name      string `json:"name"`
+	Path      string `json:"path"`
+	Bytes     int64  `json:"bytes"`
+	CreatedAt string `json:"createdAt"`
+}
+
+func (s *DBService) ListSnapshots() ([]SnapshotInfo, error) {
+	if s.db == nil {
+		return nil, fmt.Errorf("db not initialized")
+	}
+	list, err := s.db.ListSnapshots()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]SnapshotInfo, len(list))
+	for i, x := range list {
+		out[i] = SnapshotInfo{Name: x.Name, Path: x.Path, Bytes: x.Bytes, CreatedAt: x.CreatedAt}
+	}
+	return out, nil
+}
+
 func (s *DBService) Scan(opts ScanOptions) (ScanResult, error) {
 	if s.db == nil {
 		return ScanResult{}, fmt.Errorf("db not initialized")

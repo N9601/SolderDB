@@ -5,6 +5,7 @@ import {
   Get,
   GetAPIAddr,
   GetStats,
+  ListSnapshots,
   Scan,
   Set as SetKV,
   Snapshot
@@ -714,6 +715,26 @@ function BrowserView(props: {
 }
 
 function SnapshotsView(props: { dataDir: string; onSnapshot: () => void }) {
+  const [list, setList] = useState<bridgeNS.SnapshotInfo[]>([]);
+
+  const refresh = async () => {
+    try {
+      const out = await ListSnapshots();
+      setList(out ?? []);
+    } catch {
+      // ignore
+    }
+  };
+
+  useEffect(() => {
+    void refresh();
+  }, []);
+
+  async function onCreate() {
+    props.onSnapshot();
+    setTimeout(() => void refresh(), 200);
+  }
+
   return (
     <div className="animate-slideUp space-y-4">
       <div className="card card-pad">
@@ -721,19 +742,55 @@ function SnapshotsView(props: { dataDir: string; onSnapshot: () => void }) {
           <div>
             <div className="section-title">Snapshots</div>
             <div className="section-sub">
-              A snapshot is a consistent copy of the WAL + every SSTable, written to a timestamped folder.
+              A snapshot is a consistent copy of the WAL + every SSTable. Stored under{" "}
+              <span className="font-mono text-ink-700">{props.dataDir}\snapshots\</span>.
             </div>
           </div>
-          <button className="btn btn-primary" onClick={props.onSnapshot}>
-            ⎘ Create Snapshot
-          </button>
-        </div>
-        <div className="mt-4 rounded-lg border border-canvas-200 bg-canvas-100 p-4">
-          <div className="label mb-1">Snapshots Folder</div>
-          <div className="font-mono text-[12px] text-ink-700 break-all">
-            {props.dataDir ? `${props.dataDir}\\snapshots\\<timestamp>\\` : "—"}
+          <div className="flex gap-2">
+            <button className="btn" onClick={() => void refresh()}>
+              Refresh
+            </button>
+            <button className="btn btn-primary" onClick={() => void onCreate()}>
+              ⎘ Create snapshot
+            </button>
           </div>
         </div>
+      </div>
+
+      <div className="card overflow-hidden">
+        <div className="border-b border-canvas-200 px-4 py-3 section-title">
+          {list.length} previous snapshot{list.length === 1 ? "" : "s"}
+        </div>
+        {list.length === 0 ? (
+          <div className="px-4 py-10 text-center text-[12px] text-ink-400">
+            No snapshots yet — create one above.
+          </div>
+        ) : (
+          <table className="w-full text-left text-[12.5px]">
+            <thead>
+              <tr className="border-b border-canvas-200 bg-canvas-100 text-[10.5px] uppercase tracking-wider text-ink-400">
+                <th className="px-4 py-2.5 font-semibold">Name</th>
+                <th className="px-4 py-2.5 font-semibold">Created</th>
+                <th className="px-4 py-2.5 font-semibold">Size</th>
+                <th className="px-4 py-2.5 font-semibold">Path</th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.map((s) => (
+                <tr key={s.path} className="border-b border-canvas-150 hover:bg-canvas-100">
+                  <td className="px-4 py-2.5 font-mono text-ink-900">{s.name}</td>
+                  <td className="px-4 py-2.5 text-[11.5px] text-ink-500">
+                    {new Date(s.createdAt).toLocaleString()}
+                  </td>
+                  <td className="px-4 py-2.5 font-mono text-ink-700">{formatBytes(s.bytes)}</td>
+                  <td className="px-4 py-2.5 font-mono text-[11px] text-ink-400" title={s.path}>
+                    {s.path}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );

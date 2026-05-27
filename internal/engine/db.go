@@ -491,6 +491,60 @@ func (db *DB) Snapshot() (string, error) {
 	return dst, nil
 }
 
+type SnapshotInfo struct {
+	Name      string `json:"name"`
+	Path      string `json:"path"`
+	Bytes     int64  `json:"bytes"`
+	CreatedAt string `json:"createdAt"`
+}
+
+// ListSnapshots returns previously created snapshot directories, newest first.
+// Returns an empty slice if no snapshots exist yet (no error).
+func (db *DB) ListSnapshots() ([]SnapshotInfo, error) {
+	dir := filepath.Join(db.dataDir, "snapshots")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []SnapshotInfo{}, nil
+		}
+		return nil, fmt.Errorf("read snapshots dir: %w", err)
+	}
+	out := make([]SnapshotInfo, 0, len(entries))
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		full := filepath.Join(dir, e.Name())
+		size := dirSize(full)
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		out = append(out, SnapshotInfo{
+			Name:      e.Name(),
+			Path:      full,
+			Bytes:     size,
+			CreatedAt: info.ModTime().UTC().Format(time.RFC3339),
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name > out[j].Name })
+	return out, nil
+}
+
+func dirSize(path string) int64 {
+	var total int64
+	_ = filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
+		if err != nil || info == nil {
+			return nil
+		}
+		if !info.IsDir() {
+			total += info.Size()
+		}
+		return nil
+	})
+	return total
+}
+
 func copyFile(src, dst string) error {
 	in, err := os.Open(src)
 	if err != nil {
