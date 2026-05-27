@@ -27,6 +27,7 @@ import { ToastProvider, useStatusToast, useToast } from "./components/Toast";
 import { CommandPalette, type CommandItem } from "./components/CommandPalette";
 import { CountUp } from "./components/CountUp";
 import { StatSkeleton } from "./components/Skeleton";
+import { BootSplash } from "./components/BootSplash";
 
 type DBStats = bridge.Stats;
 
@@ -205,8 +206,12 @@ type AuthState =
   | { state: "signedOut" }
   | { state: "signedIn"; user: bridgeNS.User; token: string };
 
+type BootPhase = "playing" | "leaving" | "gone";
+
 export default function App() {
   const [auth, setAuth] = useState<AuthState>({ state: "loading" });
+  const [bootMinElapsed, setBootMinElapsed] = useState(false);
+  const [bootPhase, setBootPhase] = useState<BootPhase>("playing");
 
   useEffect(() => {
     const token = getToken();
@@ -225,32 +230,49 @@ export default function App() {
     })();
   }, []);
 
-  if (auth.state === "loading") {
-    return (
-      <div className="flex h-screen w-screen items-center justify-center bg-canvas-50">
-        <Logo size={32} />
-      </div>
-    );
-  }
-  if (auth.state === "signedOut") {
-    return (
+  // Boot splash gates the first render. It stays mounted until BOTH
+  //   1. auth state has resolved (signedIn or signedOut)
+  //   2. the minimum runtime has elapsed
+  // then plays a fade-out animation before unmounting.
+  const stillLoading = auth.state === "loading";
+
+  useEffect(() => {
+    if (bootPhase === "playing" && !stillLoading && bootMinElapsed) {
+      setBootPhase("leaving");
+      const t = window.setTimeout(() => setBootPhase("gone"), 380);
+      return () => window.clearTimeout(t);
+    }
+  }, [bootPhase, stillLoading, bootMinElapsed]);
+
+  // Render the real screen behind the splash so the cross-fade is smooth.
+  const realScreen =
+    auth.state === "signedOut" ? (
       <AuthView
         onSignedIn={(sess) => {
           setToken(sess.token);
           setAuth({ state: "signedIn", user: sess.user, token: sess.token });
         }}
       />
-    );
-  }
+    ) : auth.state === "signedIn" ? (
+      <AppShell
+        user={auth.user}
+        onSignOut={() => {
+          setToken("");
+          setAuth({ state: "signedOut" });
+        }}
+      />
+    ) : null;
 
   return (
-    <AppShell
-      user={auth.user}
-      onSignOut={() => {
-        setToken("");
-        setAuth({ state: "signedOut" });
-      }}
-    />
+    <>
+      {realScreen}
+      {bootPhase !== "gone" && (
+        <BootSplash
+          leaving={bootPhase === "leaving"}
+          onMinDurationElapsed={() => setBootMinElapsed(true)}
+        />
+      )}
+    </>
   );
 }
 
