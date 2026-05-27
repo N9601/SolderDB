@@ -146,6 +146,54 @@ body {
 [data-theme="dark"] .border-canvas-200 { border-color: var(--border) !important; }
 [data-theme="dark"] .border-canvas-300 { border-color: var(--border-strong) !important; }
 
+/* Hover states — Tailwind compiles `hover:bg-canvas-X` into a separate
+   selector that the flat overrides above don't cover, so the light bg
+   leaks through on hover. Mirror them explicitly. */
+[data-theme="dark"] .hover\:bg-canvas-50:hover   { background: var(--bg-soft) !important; }
+[data-theme="dark"] .hover\:bg-canvas-100:hover  { background: var(--bg-softer) !important; }
+[data-theme="dark"] .hover\:bg-canvas-150:hover  { background: var(--bg-softer) !important; }
+[data-theme="dark"] .hover\:bg-white:hover       { background: var(--bg-soft) !important; }
+[data-theme="dark"] .hover\:border-canvas-200:hover { border-color: var(--border-strong) !important; }
+[data-theme="dark"] .hover\:border-canvas-300:hover { border-color: var(--border-strong) !important; }
+
+/* Selected row in copper — tone it down so it sits properly on a dark surface. */
+[data-theme="dark"] .bg-copper-50 {
+  background: rgba(224, 122, 37, 0.10) !important;
+}
+[data-theme="dark"] .border-copper-100 {
+  border-color: rgba(224, 122, 37, 0.25) !important;
+}
+[data-theme="dark"] .text-copper-700 {
+  color: theme("colors.copper.300") !important;
+}
+[data-theme="dark"] .text-copper-600 {
+  color: theme("colors.copper.400") !important;
+}
+
+/* Steel chip palette in dark */
+[data-theme="dark"] .bg-steel-100 {
+  background: rgba(91, 107, 138, 0.18) !important;
+}
+[data-theme="dark"] .text-steel-700 {
+  color: theme("colors.steel.300") !important;
+}
+
+/* Amber / red status pills used in toasts, logs filters, throttle banners */
+[data-theme="dark"] .bg-amber-50  { background: rgba(217, 119, 6, 0.14) !important; }
+[data-theme="dark"] .text-amber-800,
+[data-theme="dark"] .text-amber-700 { color: #fbbf24 !important; }
+[data-theme="dark"] .border-amber-200 { border-color: rgba(217, 119, 6, 0.35) !important; }
+
+[data-theme="dark"] .bg-red-50  { background: rgba(220, 38, 38, 0.14) !important; }
+[data-theme="dark"] .text-red-800,
+[data-theme="dark"] .text-red-700,
+[data-theme="dark"] .text-red-600 { color: #fca5a5 !important; }
+[data-theme="dark"] .border-red-200 { border-color: rgba(220, 38, 38, 0.35) !important; }
+
+[data-theme="dark"] .bg-emerald-50 { background: rgba(16, 185, 129, 0.14) !important; }
+[data-theme="dark"] .text-emerald-800 { color: #6ee7b7 !important; }
+[data-theme="dark"] .border-emerald-200 { border-color: rgba(16, 185, 129, 0.35) !important; }
+
 /* Scrollbar */
 [data-theme="dark"] ::-webkit-scrollbar-thumb {
   background: var(--border-strong);
