@@ -11,6 +11,7 @@ import (
 	"solderdb/internal/bridge"
 	"solderdb/internal/collections"
 	"solderdb/internal/files"
+	"solderdb/internal/logs"
 	"solderdb/internal/realtime"
 
 	"github.com/wailsapp/wails/v2"
@@ -71,7 +72,16 @@ func main() {
 	if err != nil {
 		log.Fatalf("init files: %v", err)
 	}
-	apiSrv := api.New(svc.Engine(), apiColls, authSvc, hub, fileSvc, api.Config{
+	logBuf := logs.New(500)
+	// Bridge new log entries to the realtime hub so the UI can live-tail them.
+	logBuf.SetPublisher(func(e logs.Entry) {
+		hub.Publish("logs", realtime.Event{
+			Kind:      realtime.EventCreate,
+			Data:      e,
+			Timestamp: e.Timestamp,
+		})
+	})
+	apiSrv := api.New(svc.Engine(), apiColls, authSvc, hub, fileSvc, logBuf, api.Config{
 		Addr:        "127.0.0.1:8787",
 		AllowOrigin: "*",
 	})

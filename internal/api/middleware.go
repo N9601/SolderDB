@@ -4,8 +4,10 @@ import (
 	"context"
 	"net/http"
 	"strings"
+	"time"
 
 	"solderdb/internal/auth"
+	"solderdb/internal/logs"
 )
 
 // Authorization model:
@@ -57,6 +59,45 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKeyUser, user)))
+	})
+}
+
+// statusRecorder captures status code so the log middleware can record it.
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	r.status = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
+// logMiddleware records every request into the in-memory ring buffer. Skips
+// the SSE endpoint itself (long-lived; would spam the log every keepalive).
+func (s *Server) logMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.logs == nil || r.URL.Path == "/api/realtime" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		rec := &statusRecorder{ResponseWriter: w, status: 200}
+		start := time.Now()
+		next.ServeHTTP(rec, r)
+		var user string
+		if v := r.Context().Value(ctxKeyUser); v != nil {
+			if u, ok := v.(auth.User); ok {
+				user = u.Email
+			}
+		}
+		s.logs.Append(logs.Entry{
+			Method:     r.Method,
+			Path:       r.URL.Path,
+			Status:     rec.status,
+			DurationMs: time.Since(start).Milliseconds(),
+			User:       user,
+			Remote:     r.RemoteAddr,
+		})
 	})
 }
 
@@ -112,6 +153,11 @@ func (s *Server) routePolicy(r *http.Request) policy {
 
 	// Stats: admin (carries data dir paths).
 	if p == "/api/stats" {
+		return policyAdmin
+	}
+
+	// Logs: admin only (contains user emails + paths).
+	if p == "/api/logs" {
 		return policyAdmin
 	}
 

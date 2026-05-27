@@ -14,6 +14,7 @@ import (
 	"solderdb/internal/collections"
 	"solderdb/internal/engine"
 	"solderdb/internal/files"
+	"solderdb/internal/logs"
 	"solderdb/internal/realtime"
 )
 
@@ -35,7 +36,7 @@ func startTestServer(t *testing.T) (*Server, func()) {
 	if err != nil {
 		t.Fatalf("files: %v", err)
 	}
-	srv := New(db, colls, authSvc, hub, fileSvc, Config{Addr: "127.0.0.1:0"})
+	srv := New(db, colls, authSvc, hub, fileSvc, logs.New(100), Config{Addr: "127.0.0.1:0"})
 	if err := srv.Start(); err != nil {
 		t.Fatalf("start: %v", err)
 	}

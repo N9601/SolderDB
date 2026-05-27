@@ -25,6 +25,7 @@ import (
 	"solderdb/internal/collections"
 	"solderdb/internal/engine"
 	"solderdb/internal/files"
+	"solderdb/internal/logs"
 	"solderdb/internal/realtime"
 )
 
@@ -43,20 +44,21 @@ type Server struct {
 	auth   *auth.Service
 	hub    *realtime.Hub
 	files  *files.Service
+	logs   *logs.Buffer
 	mux    *http.ServeMux
 	srv    *http.Server
 	mu     sync.Mutex
 	listen net.Listener
 }
 
-func New(db *engine.DB, colls *collections.Service, authSvc *auth.Service, hub *realtime.Hub, fileSvc *files.Service, cfg Config) *Server {
+func New(db *engine.DB, colls *collections.Service, authSvc *auth.Service, hub *realtime.Hub, fileSvc *files.Service, logBuf *logs.Buffer, cfg Config) *Server {
 	if cfg.Addr == "" {
 		cfg.Addr = "127.0.0.1:8787"
 	}
-	s := &Server{cfg: cfg, db: db, colls: colls, auth: authSvc, hub: hub, files: fileSvc, mux: http.NewServeMux()}
+	s := &Server{cfg: cfg, db: db, colls: colls, auth: authSvc, hub: hub, files: fileSvc, logs: logBuf, mux: http.NewServeMux()}
 	s.routes()
 	s.srv = &http.Server{
-		Handler:           s.withMiddleware(s.authMiddleware(s.mux)),
+		Handler:           s.withMiddleware(s.logMiddleware(s.authMiddleware(s.mux))),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	return s
@@ -117,6 +119,25 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/realtime", s.handleRealtime)
 	s.mux.HandleFunc("/api/files", s.handleFiles)
 	s.mux.HandleFunc("/api/files/", s.handleFileItem)
+	s.mux.HandleFunc("/api/logs", s.handleLogs)
+}
+
+func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, 405, "method not allowed")
+		return
+	}
+	if s.logs == nil {
+		writeJSON(w, 200, []any{})
+		return
+	}
+	limit := 200
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 2000 {
+			limit = n
+		}
+	}
+	writeJSON(w, 200, s.logs.Tail(limit))
 }
 
 // ---------------- File handlers ----------------
