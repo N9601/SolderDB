@@ -137,6 +137,8 @@ type ListKeysOptions struct {
 type ScanOptions struct {
 	Prefix string
 	After  string // exclusive cursor; return keys strictly greater than After
+	Start  string // inclusive lower bound; "" disables
+	End    string // exclusive upper bound; "" disables
 	Limit  int    // must be >0
 }
 
@@ -215,6 +217,17 @@ func (db *DB) Scan(opts ScanOptions) (ScanResult, error) {
 	all, err := db.ListKeys(ListKeysOptions{Prefix: opts.Prefix, Limit: 0})
 	if err != nil {
 		return ScanResult{}, err
+	}
+
+	// Apply Start (inclusive) and End (exclusive) bounds after the prefix
+	// filter — they're independent constraints, not alternatives.
+	if opts.Start != "" {
+		i := sort.SearchStrings(all, opts.Start)
+		all = all[i:]
+	}
+	if opts.End != "" {
+		j := sort.SearchStrings(all, opts.End)
+		all = all[:j]
 	}
 
 	start := 0

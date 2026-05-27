@@ -246,6 +246,8 @@ function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
   const [stats, setStats] = useState<DBStats | null>(null);
 
   const [keyPrefix, setKeyPrefix] = useState<string>("");
+  const [scanStart, setScanStart] = useState<string>("");
+  const [scanEnd, setScanEnd] = useState<string>("");
   const [rows, setRows] = useState<Row[]>([]);
   const [scanAfter, setScanAfter] = useState<string>("");
   const [scanNextAfter, setScanNextAfter] = useState<string>("");
@@ -274,6 +276,8 @@ function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
       const res = await Scan({
         prefix: keyPrefix,
         after: scanAfter,
+        start: scanStart,
+        end: scanEnd,
         limit: PAGE_SIZE
       } as bridge.ScanOptions);
       const keys = res.keys ?? [];
@@ -323,7 +327,7 @@ function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
   useEffect(() => {
     void refreshKeys();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [keyPrefix, scanAfter]);
+  }, [keyPrefix, scanAfter, scanStart, scanEnd]);
 
   async function onGet() {
     if (!key) {
@@ -533,8 +537,18 @@ function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
             <BrowserView
               rows={rows}
               prefix={keyPrefix}
+              start={scanStart}
+              end={scanEnd}
               onChangePrefix={(s) => {
                 setKeyPrefix(s);
+                setScanAfter("");
+              }}
+              onChangeStart={(s) => {
+                setScanStart(s);
+                setScanAfter("");
+              }}
+              onChangeEnd={(s) => {
+                setScanEnd(s);
                 setScanAfter("");
               }}
               hasNext={!!scanNextAfter}
@@ -669,7 +683,11 @@ function ConsoleView(props: {
 function BrowserView(props: {
   rows: Row[];
   prefix: string;
+  start: string;
+  end: string;
   onChangePrefix: (s: string) => void;
+  onChangeStart: (s: string) => void;
+  onChangeEnd: (s: string) => void;
   hasNext: boolean;
   onFirst: () => void;
   onNext: () => void;
@@ -679,23 +697,46 @@ function BrowserView(props: {
   return (
     <div className="animate-slideUp space-y-4">
       <div className="card card-pad">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex-1 min-w-[200px]">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div>
+            <label className="label">Prefix</label>
             <input
               value={props.prefix}
               onChange={(e) => props.onChangePrefix(e.target.value)}
-              className="field"
-              placeholder="Filter by key prefix (e.g. user:)"
+              className="field mt-1"
+              placeholder="user:"
               spellCheck={false}
             />
           </div>
+          <div>
+            <label className="label">Start (inclusive)</label>
+            <input
+              value={props.start}
+              onChange={(e) => props.onChangeStart(e.target.value)}
+              className="field mt-1"
+              placeholder="user:001"
+              spellCheck={false}
+            />
+          </div>
+          <div>
+            <label className="label">End (exclusive)</label>
+            <input
+              value={props.end}
+              onChange={(e) => props.onChangeEnd(e.target.value)}
+              className="field mt-1"
+              placeholder="user:999"
+              spellCheck={false}
+            />
+          </div>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <button className="btn" onClick={props.onFirst}>
             First
           </button>
           <button className="btn" disabled={!props.hasNext} onClick={props.onNext}>
             Next →
           </button>
-          <span className="chip">
+          <span className="chip ml-auto">
             {props.rows.length} {props.rows.length === 1 ? "key" : "keys"}
           </span>
         </div>

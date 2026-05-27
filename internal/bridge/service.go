@@ -40,6 +40,8 @@ type ListKeysOptions struct {
 type ScanOptions struct {
 	Prefix string `json:"prefix"`
 	After  string `json:"after"`
+	Start  string `json:"start"`
+	End    string `json:"end"`
 	Limit  int    `json:"limit"`
 }
 
@@ -167,6 +169,8 @@ func (s *DBService) Scan(opts ScanOptions) (ScanResult, error) {
 	res, err := s.db.Scan(engine.ScanOptions{
 		Prefix: opts.Prefix,
 		After:  opts.After,
+		Start:  opts.Start,
+		End:    opts.End,
 		Limit:  opts.Limit,
 	})
 	if err != nil {

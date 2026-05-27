@@ -164,6 +164,42 @@ func TestCompactionReducesSSTableCount(t *testing.T) {
 	}
 }
 
+func TestScanRangeBounds(t *testing.T) {
+	dir := t.TempDir()
+	db, err := Open(Options{DataDir: dir})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	for _, k := range []string{"a", "b", "c", "d", "e", "f"} {
+		if err := db.Set(k, k); err != nil {
+			t.Fatalf("set: %v", err)
+		}
+	}
+
+	res, err := db.Scan(ScanOptions{Start: "b", End: "e", Limit: 100})
+	if err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	got := strings.Join(res.Keys, ",")
+	if got != "b,c,d" {
+		t.Fatalf("expected b,c,d, got %s", got)
+	}
+
+	// End-only.
+	res2, _ := db.Scan(ScanOptions{End: "c", Limit: 100})
+	if strings.Join(res2.Keys, ",") != "a,b" {
+		t.Fatalf("end-only: got %v", res2.Keys)
+	}
+
+	// Start-only.
+	res3, _ := db.Scan(ScanOptions{Start: "e", Limit: 100})
+	if strings.Join(res3.Keys, ",") != "e,f" {
+		t.Fatalf("start-only: got %v", res3.Keys)
+	}
+}
+
 func TestSnapshotCopiesWALAndSSTables(t *testing.T) {
 	dir := t.TempDir()
 	db, err := Open(Options{DataDir: dir, FlushThresholdBytes: 64})
