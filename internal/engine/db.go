@@ -327,6 +327,13 @@ func (db *DB) Close() error {
 	return firstErr
 }
 
+// DataDir returns the configured data directory.
+func (db *DB) DataDir() string {
+	db.mu.RLock()
+	defer db.mu.RUnlock()
+	return db.dataDir
+}
+
 func (db *DB) Stats() (Stats, error) {
 	db.mu.RLock()
 	defer db.mu.RUnlock()

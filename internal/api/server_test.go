@@ -10,18 +10,24 @@ import (
 	"testing"
 	"time"
 
+	"solderdb/internal/auth"
 	"solderdb/internal/collections"
 	"solderdb/internal/engine"
 )
 
 func startTestServer(t *testing.T) (*Server, func()) {
 	t.Helper()
-	db, err := engine.Open(engine.Options{DataDir: t.TempDir()})
+	dir := t.TempDir()
+	db, err := engine.Open(engine.Options{DataDir: dir})
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
 	colls := collections.New(db)
-	srv := New(db, colls, Config{Addr: "127.0.0.1:0"})
+	authSvc, err := auth.New(db, colls, dir)
+	if err != nil {
+		t.Fatalf("auth: %v", err)
+	}
+	srv := New(db, colls, authSvc, Config{Addr: "127.0.0.1:0"})
 	if err := srv.Start(); err != nil {
 		t.Fatalf("start: %v", err)
 	}
@@ -30,6 +36,102 @@ func startTestServer(t *testing.T) (*Server, func()) {
 		defer cancel()
 		_ = srv.Stop(ctx)
 		_ = db.Close()
+	}
+}
+
+func TestAuthFlow(t *testing.T) {
+	srv, cleanup := startTestServer(t)
+	defer cleanup()
+	base := "http://" + srv.Addr()
+
+	// Register first user — should become admin.
+	code, body := doJSON(t, http.MethodPost, base+"/api/auth/register", map[string]any{
+		"email":    "alice@example.com",
+		"password": "supersecret",
+	})
+	if code != 201 {
+		t.Fatalf("register code=%d body=%s", code, body)
+	}
+	var sess struct {
+		Token string `json:"token"`
+		User  struct {
+			ID    string `json:"id"`
+			Email string `json:"email"`
+			Role  string `json:"role"`
+		} `json:"user"`
+	}
+	if err := json.Unmarshal(body, &sess); err != nil {
+		t.Fatalf("decode session: %v body=%s", err, body)
+	}
+	if sess.Token == "" || sess.User.Role != "admin" {
+		t.Fatalf("expected token + admin role, got %+v", sess)
+	}
+
+	// Duplicate registration -> 400.
+	code, _ = doJSON(t, http.MethodPost, base+"/api/auth/register", map[string]any{
+		"email": "alice@example.com", "password": "supersecret",
+	})
+	if code != 400 {
+		t.Fatalf("expected 400 on duplicate, got %d", code)
+	}
+
+	// Wrong password -> 401.
+	code, _ = doJSON(t, http.MethodPost, base+"/api/auth/login", map[string]any{
+		"email": "alice@example.com", "password": "wrong",
+	})
+	if code != 401 {
+		t.Fatalf("expected 401, got %d", code)
+	}
+
+	// Correct login.
+	code, body = doJSON(t, http.MethodPost, base+"/api/auth/login", map[string]any{
+		"email": "alice@example.com", "password": "supersecret",
+	})
+	if code != 200 {
+		t.Fatalf("login code=%d body=%s", code, body)
+	}
+	if err := json.Unmarshal(body, &sess); err != nil {
+		t.Fatalf("decode session: %v", err)
+	}
+
+	// /me with token.
+	req, _ := http.NewRequest(http.MethodGet, base+"/api/auth/me", nil)
+	req.Header.Set("Authorization", "Bearer "+sess.Token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("me: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != 200 {
+		out, _ := io.ReadAll(resp.Body)
+		t.Fatalf("me code=%d body=%s", resp.StatusCode, out)
+	}
+
+	// /me without token -> 401.
+	code, _ = doJSON(t, http.MethodGet, base+"/api/auth/me", nil)
+	if code != 401 {
+		t.Fatalf("expected 401 without token, got %d", code)
+	}
+
+	// /me with garbage token -> 401.
+	req2, _ := http.NewRequest(http.MethodGet, base+"/api/auth/me", nil)
+	req2.Header.Set("Authorization", "Bearer not.a.token")
+	resp2, _ := http.DefaultClient.Do(req2)
+	if resp2.StatusCode != 401 {
+		t.Fatalf("expected 401 with bad token, got %d", resp2.StatusCode)
+	}
+	_ = resp2.Body.Close()
+
+	// Second registration should be a regular user, not admin.
+	code, body = doJSON(t, http.MethodPost, base+"/api/auth/register", map[string]any{
+		"email": "bob@example.com", "password": "anothersecret",
+	})
+	if code != 201 {
+		t.Fatalf("register bob code=%d body=%s", code, body)
+	}
+	_ = json.Unmarshal(body, &sess)
+	if sess.User.Role != "user" {
+		t.Fatalf("expected bob to be 'user', got %q", sess.User.Role)
 	}
 }
 

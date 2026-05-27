@@ -72,7 +72,9 @@ func New(db *engine.DB) *Service {
 	return &Service{db: db}
 }
 
-var nameRe = regexp.MustCompile(`^[a-z][a-z0-9_]{0,30}$`)
+// Allow an optional leading underscore for internal collections like `_users`.
+// User-facing collections still start with a letter.
+var nameRe = regexp.MustCompile(`^_?[a-z][a-z0-9_]{0,30}$`)
 
 const (
 	metaPrefix = "_coll:meta:"

@@ -12,6 +12,9 @@ import {
 import { bridge } from "./wailsjs/go/models";
 import { Logo } from "./components/Logo";
 import CollectionsView from "./views/CollectionsView";
+import AuthView from "./views/AuthView";
+import { VerifyToken } from "./wailsjs/go/bridge/AuthService";
+import type { bridge as bridgeNS } from "./wailsjs/go/models";
 
 type DBStats = bridge.Stats;
 
@@ -143,7 +146,63 @@ const NAV: { id: NavId; label: string; icon: JSX.Element }[] = [
   }
 ];
 
+const TOKEN_KEY = "solderdb.token";
+
+type AuthState =
+  | { state: "loading" }
+  | { state: "signedOut" }
+  | { state: "signedIn"; user: bridgeNS.User; token: string };
+
 export default function App() {
+  const [auth, setAuth] = useState<AuthState>({ state: "loading" });
+
+  useEffect(() => {
+    const token = window.localStorage.getItem(TOKEN_KEY);
+    if (!token) {
+      setAuth({ state: "signedOut" });
+      return;
+    }
+    void (async () => {
+      try {
+        const user = await VerifyToken(token);
+        setAuth({ state: "signedIn", user, token });
+      } catch {
+        window.localStorage.removeItem(TOKEN_KEY);
+        setAuth({ state: "signedOut" });
+      }
+    })();
+  }, []);
+
+  if (auth.state === "loading") {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-canvas-50">
+        <Logo size={32} />
+      </div>
+    );
+  }
+  if (auth.state === "signedOut") {
+    return (
+      <AuthView
+        onSignedIn={(sess) => {
+          window.localStorage.setItem(TOKEN_KEY, sess.token);
+          setAuth({ state: "signedIn", user: sess.user, token: sess.token });
+        }}
+      />
+    );
+  }
+
+  return (
+    <AppShell
+      user={auth.user}
+      onSignOut={() => {
+        window.localStorage.removeItem(TOKEN_KEY);
+        setAuth({ state: "signedOut" });
+      }}
+    />
+  );
+}
+
+function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
   const [nav, setNav] = useState<NavId>("dashboard");
 
   const [key, setKey] = useState<string>("");
@@ -343,7 +402,27 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <div className="border-t border-gunmetal-800 px-4 py-3">
+        <div className="border-t border-gunmetal-800 px-3 py-3">
+          <div className="mb-2 flex items-center gap-2 rounded-md bg-gunmetal-850 px-2.5 py-2">
+            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-copper-500 text-[11px] font-semibold text-white">
+              {props.user.email.charAt(0).toUpperCase()}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-[12px] font-medium text-white">{props.user.email}</div>
+              <div className="text-[10px] uppercase tracking-wider text-canvas-300">{props.user.role}</div>
+            </div>
+            <button
+              className="text-canvas-300 hover:text-white"
+              onClick={props.onSignOut}
+              title="Sign out"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M16 17l5-5-5-5" />
+                <path d="M21 12H9" />
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              </svg>
+            </button>
+          </div>
           <div className="flex items-center justify-between text-[10px] text-canvas-300">
             <span className="font-mono">v0.1.0</span>
             <span className="chip-mono inline-flex items-center gap-1.5 text-canvas-200">

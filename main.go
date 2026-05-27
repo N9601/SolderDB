@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"solderdb/internal/api"
+	"solderdb/internal/auth"
 	"solderdb/internal/bridge"
 	"solderdb/internal/collections"
 
@@ -52,10 +53,17 @@ func main() {
 	}
 	app.svc = svc
 	colls := bridge.NewCollectionsService(svc.Engine())
+	var authBridge *bridge.AuthService
 
 	// Start the local REST API on 127.0.0.1:8787 so SDKs/CLIs/curl can hit it.
 	// AllowOrigin "*" is fine because we only listen on loopback.
-	apiSrv := api.New(svc.Engine(), collections.New(svc.Engine()), api.Config{
+	apiColls := collections.New(svc.Engine())
+	authSvc, err := auth.New(svc.Engine(), apiColls, svc.Engine().DataDir())
+	if err != nil {
+		log.Fatalf("init auth: %v", err)
+	}
+	authBridge = bridge.NewAuthService(authSvc)
+	apiSrv := api.New(svc.Engine(), apiColls, authSvc, api.Config{
 		Addr:        "127.0.0.1:8787",
 		AllowOrigin: "*",
 	})
@@ -80,6 +88,7 @@ func main() {
 			app,
 			app.svc,
 			colls,
+			authBridge,
 		},
 	}); err != nil {
 		log.Fatal(err)

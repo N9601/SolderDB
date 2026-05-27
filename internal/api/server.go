@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"solderdb/internal/auth"
 	"solderdb/internal/collections"
 	"solderdb/internal/engine"
 )
@@ -36,17 +37,18 @@ type Server struct {
 	cfg    Config
 	db     *engine.DB
 	colls  *collections.Service
+	auth   *auth.Service
 	mux    *http.ServeMux
 	srv    *http.Server
 	mu     sync.Mutex
 	listen net.Listener
 }
 
-func New(db *engine.DB, colls *collections.Service, cfg Config) *Server {
+func New(db *engine.DB, colls *collections.Service, authSvc *auth.Service, cfg Config) *Server {
 	if cfg.Addr == "" {
 		cfg.Addr = "127.0.0.1:8787"
 	}
-	s := &Server{cfg: cfg, db: db, colls: colls, mux: http.NewServeMux()}
+	s := &Server{cfg: cfg, db: db, colls: colls, auth: authSvc, mux: http.NewServeMux()}
 	s.routes()
 	s.srv = &http.Server{
 		Handler:           s.withMiddleware(s.mux),
@@ -104,6 +106,91 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/collections", s.handleCollections)
 	s.mux.HandleFunc("/api/collections/", s.handleCollectionItem)
 	s.mux.HandleFunc("/api/kv/", s.handleKV)
+	s.mux.HandleFunc("/api/auth/register", s.handleRegister)
+	s.mux.HandleFunc("/api/auth/login", s.handleLogin)
+	s.mux.HandleFunc("/api/auth/me", s.handleMe)
+}
+
+// ---------------- Auth handlers ----------------
+
+func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, 405, "method not allowed")
+		return
+	}
+	if s.auth == nil {
+		writeError(w, 500, "auth not configured")
+		return
+	}
+	var body struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+	if err := decodeBody(r, &body); err != nil {
+		writeError(w, 400, err.Error())
+		return
+	}
+	sess, err := s.auth.Register(body.Email, body.Password)
+	if err != nil {
+		writeError(w, 400, err.Error())
+		return
+	}
+	writeJSON(w, 201, sess)
+}
+
+func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, 405, "method not allowed")
+		return
+	}
+	if s.auth == nil {
+		writeError(w, 500, "auth not configured")
+		return
+	}
+	var body struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+	if err := decodeBody(r, &body); err != nil {
+		writeError(w, 400, err.Error())
+		return
+	}
+	sess, err := s.auth.Login(body.Email, body.Password)
+	if err != nil {
+		writeError(w, 401, err.Error())
+		return
+	}
+	writeJSON(w, 200, sess)
+}
+
+func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, 405, "method not allowed")
+		return
+	}
+	user, ok := s.currentUser(r)
+	if !ok {
+		writeError(w, 401, "unauthenticated")
+		return
+	}
+	writeJSON(w, 200, user)
+}
+
+// currentUser parses the Authorization header and returns the user, if any.
+func (s *Server) currentUser(r *http.Request) (auth.User, bool) {
+	if s.auth == nil {
+		return auth.User{}, false
+	}
+	h := r.Header.Get("Authorization")
+	if !strings.HasPrefix(h, "Bearer ") {
+		return auth.User{}, false
+	}
+	token := strings.TrimPrefix(h, "Bearer ")
+	u, err := s.auth.VerifyToken(token)
+	if err != nil {
+		return auth.User{}, false
+	}
+	return u, true
 }
 
 // /api/collections/<name>[/records[/<id>]]
