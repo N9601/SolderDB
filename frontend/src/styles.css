@@ -20,6 +20,31 @@ body {
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 }
 
+/* Workspace ambient — a faint copper sheen sits high on the page so cards
+   feel like they're catching light from above. Pure aesthetic. */
+main {
+  position: relative;
+}
+main::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 320px;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 60% 100% at 30% 0%,
+    rgba(224, 122, 37, 0.06) 0%,
+    transparent 70%
+  );
+  z-index: 0;
+}
+main > * {
+  position: relative;
+  z-index: 1;
+}
+
 /* --- Reusable building blocks --- */
 
 .card {
@@ -107,14 +132,40 @@ body {
 }
 
 .btn-primary {
-  background: theme("colors.copper.500");
+  background: linear-gradient(180deg, theme("colors.copper.500") 0%, theme("colors.copper.600") 100%);
   border-color: theme("colors.copper.600");
   color: #ffffff;
-  box-shadow: theme("boxShadow.copper");
+  box-shadow:
+    0 4px 14px rgba(224, 122, 37, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  position: relative;
+  overflow: hidden;
+}
+.btn-primary::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.2) 0%, transparent 50%);
+  opacity: 0;
+  transition: opacity 160ms ease;
+  pointer-events: none;
 }
 .btn-primary:hover:not(:disabled) {
-  background: theme("colors.copper.600");
+  background: linear-gradient(180deg, theme("colors.copper.500") 0%, theme("colors.copper.700") 100%);
   border-color: theme("colors.copper.700");
+  box-shadow:
+    0 6px 22px rgba(224, 122, 37, 0.40),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  transform: translateY(-1px);
+}
+.btn-primary:hover:not(:disabled)::after {
+  opacity: 1;
+}
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow:
+    0 2px 8px rgba(224, 122, 37, 0.30),
+    inset 0 1px 0 rgba(255, 255, 255, 0.10);
 }
 
 .btn-ghost {

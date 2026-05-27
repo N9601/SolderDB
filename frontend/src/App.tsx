@@ -697,7 +697,7 @@ function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
         {/* Content */}
         <div key={nav} className="page-enter flex-1 overflow-auto px-6 py-6">
           {nav === "dashboard" && (
-            <DashboardView stats={stats} writePulse={writePulse} hw={hw} />
+            <DashboardView stats={stats} writePulse={writePulse} hw={hw} user={props.user} />
           )}
           {nav === "lifecycle" && <LifecycleView />}
           {nav === "collections" && <CollectionsView onStatus={setStatus} />}
@@ -756,10 +756,11 @@ function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
 
 /* ---------------------- Views ---------------------- */
 
-function DashboardView(props: { stats: DBStats | null; writePulse: boolean; hw: bridgeNS.HardwareStatus | null }) {
-  const { stats, writePulse, hw } = props;
+function DashboardView(props: { stats: DBStats | null; writePulse: boolean; hw: bridgeNS.HardwareStatus | null; user: bridgeNS.User }) {
+  const { stats, writePulse, hw, user } = props;
   return (
     <div className="animate-slideUp space-y-6">
+      <DashboardHero user={user} stats={stats} hw={hw} />
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {!stats ? (
           Array.from({ length: 8 }).map((_, i) => <StatSkeleton key={i} />)
@@ -1262,6 +1263,63 @@ curl -X POST ${props.apiAddr}/api/collections/notes/records \\
 }
 
 /* ---------------------- Small components ---------------------- */
+
+function DashboardHero(props: { user: bridgeNS.User; stats: DBStats | null; hw: bridgeNS.HardwareStatus | null }) {
+  const hour = new Date().getHours();
+  const greeting = hour < 5 ? "Still up" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const name = props.user.email.split("@")[0];
+
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-canvas-200 bg-white p-6 shadow-card">
+      {/* Decorative top edge */}
+      <div
+        className="pointer-events-none absolute -right-24 -top-24 h-56 w-56 rounded-full opacity-50 blur-3xl"
+        style={{ background: "radial-gradient(circle, rgba(224,122,37,0.25) 0%, transparent 70%)" }}
+      />
+      <div className="relative flex items-start justify-between gap-6">
+        <div>
+          <div className="text-[12px] font-medium uppercase tracking-[0.14em] text-ink-400">
+            {greeting}
+          </div>
+          <h1 className="mt-1 text-[26px] font-semibold tracking-tight text-ink-900">
+            <span className="capitalize">{name}</span>
+            <span className="ml-2 text-copper-500">·</span>
+            <span className="ml-2 text-ink-500">{props.user.role}</span>
+          </h1>
+          <div className="mt-1.5 text-[13px] text-ink-500">
+            {props.stats ? (
+              <>
+                <strong className="text-ink-900">{props.stats.liveKeys.toLocaleString()}</strong> live
+                {" "}keys across{" "}
+                <strong className="text-ink-900">{props.stats.ssTableCount}</strong> SSTable{props.stats.ssTableCount === 1 ? "" : "s"}.
+              </>
+            ) : (
+              "Booting…"
+            )}
+          </div>
+        </div>
+        <div className="flex flex-col items-end gap-2">
+          {props.hw && (
+            <span
+              className={`chip chip-mono ${
+                props.hw.throttled
+                  ? "border-amber-200 bg-amber-50 text-amber-800"
+                  : "chip-steel"
+              }`}
+              title={props.hw.throttled ? props.hw.reason : "All systems nominal"}
+            >
+              <span className={`dot ${props.hw.throttled ? "" : "dot-idle"}`} />
+              {props.hw.throttled ? "Throttled" : "Healthy"}
+            </span>
+          )}
+          <span className="chip chip-mono">
+            ⌘ K to search
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function NumStat(props: { label: string; value: number; accent?: boolean }) {
   return (
