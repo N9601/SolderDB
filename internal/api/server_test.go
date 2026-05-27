@@ -13,6 +13,7 @@ import (
 	"solderdb/internal/auth"
 	"solderdb/internal/collections"
 	"solderdb/internal/engine"
+	"solderdb/internal/realtime"
 )
 
 func startTestServer(t *testing.T) (*Server, func()) {
@@ -23,11 +24,13 @@ func startTestServer(t *testing.T) (*Server, func()) {
 		t.Fatalf("open db: %v", err)
 	}
 	colls := collections.New(db)
+	hub := realtime.NewHub()
+	colls.SetNotifier(realtime.CollectionsNotifier{Hub: hub})
 	authSvc, err := auth.New(db, colls, dir)
 	if err != nil {
 		t.Fatalf("auth: %v", err)
 	}
-	srv := New(db, colls, authSvc, Config{Addr: "127.0.0.1:0"})
+	srv := New(db, colls, authSvc, hub, Config{Addr: "127.0.0.1:0"})
 	if err := srv.Start(); err != nil {
 		t.Fatalf("start: %v", err)
 	}
@@ -36,6 +39,67 @@ func startTestServer(t *testing.T) (*Server, func()) {
 		defer cancel()
 		_ = srv.Stop(ctx)
 		_ = db.Close()
+	}
+}
+
+func TestSSEReceivesCollectionEvents(t *testing.T) {
+	srv, cleanup := startTestServer(t)
+	defer cleanup()
+	base := "http://" + srv.Addr()
+
+	// Set up the collection first.
+	if code, body := doJSON(t, http.MethodPost, base+"/api/collections", map[string]any{
+		"name":   "live",
+		"fields": []map[string]any{{"name": "x", "type": "text", "required": true}},
+	}); code != 201 {
+		t.Fatalf("setup coll code=%d body=%s", code, body)
+	}
+
+	// Open SSE stream.
+	req, _ := http.NewRequest(http.MethodGet, base+"/api/realtime?topic=coll:live", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("sse: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != 200 {
+		t.Fatalf("sse code=%d", resp.StatusCode)
+	}
+
+	// Insert a record concurrently.
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		_, _ = doJSON(t, http.MethodPost, base+"/api/collections/live/records", map[string]any{"x": "hi"})
+	}()
+
+	// Read in a goroutine; wait up to 3s for the create event.
+	gotCreate := make(chan bool, 1)
+	go func() {
+		buf := make([]byte, 4096)
+		var carry string
+		for {
+			n, err := resp.Body.Read(buf)
+			if n > 0 {
+				carry += string(buf[:n])
+				if strings.Contains(carry, "event: create") && strings.Contains(carry, `"collection":"live"`) {
+					gotCreate <- true
+					return
+				}
+			}
+			if err != nil {
+				gotCreate <- false
+				return
+			}
+		}
+	}()
+
+	select {
+	case ok := <-gotCreate:
+		if !ok {
+			t.Fatal("stream closed before create event")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("did not receive create event over SSE")
 	}
 }
 

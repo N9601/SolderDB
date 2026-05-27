@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CreateCollection,
   DeleteCollection,
@@ -8,6 +8,7 @@ import {
   ListRecords,
   UpdateRecord
 } from "../wailsjs/go/bridge/CollectionsService";
+import { GetAPIAddr } from "../wailsjs/go/bridge/DBService";
 import { bridge } from "../wailsjs/go/models";
 
 type Collection = bridge.CollectionMeta;
@@ -28,6 +29,8 @@ export default function CollectionsView({ onStatus }: Props) {
   const [creatingCollection, setCreatingCollection] = useState(false);
   const [editingRecord, setEditingRecord] = useState<Record_ | null>(null);
   const [insertOpen, setInsertOpen] = useState(false);
+  const [livePulse, setLivePulse] = useState<string>("");
+  const livePulseTimer = useRef<number | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -62,6 +65,36 @@ export default function CollectionsView({ onStatus }: Props) {
   useEffect(() => {
     void refreshRecords();
   }, [refreshRecords]);
+
+  // Live: subscribe to changes on the selected collection via SSE.
+  useEffect(() => {
+    if (!selected) return;
+    let es: EventSource | null = null;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const apiAddr = await GetAPIAddr();
+        if (!apiAddr || cancelled) return;
+        es = new EventSource(`${apiAddr}/api/realtime?topic=coll:${encodeURIComponent(selected.name)}`);
+        const onEvent = (kind: string) => {
+          setLivePulse(kind);
+          if (livePulseTimer.current !== null) window.clearTimeout(livePulseTimer.current);
+          livePulseTimer.current = window.setTimeout(() => setLivePulse(""), 1200);
+          void refreshRecords();
+        };
+        es.addEventListener("create", () => onEvent("create"));
+        es.addEventListener("update", () => onEvent("update"));
+        es.addEventListener("delete", () => onEvent("delete"));
+      } catch {
+        // ignore — UI keeps working without realtime
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (es) es.close();
+      if (livePulseTimer.current !== null) window.clearTimeout(livePulseTimer.current);
+    };
+  }, [selected, refreshRecords]);
 
   async function onDeleteCollection(name: string) {
     if (!window.confirm(`Delete collection "${name}" and all its records?`)) return;
@@ -150,6 +183,7 @@ export default function CollectionsView({ onStatus }: Props) {
           <>
             <CollectionHeader
               collection={selected}
+              livePulse={livePulse}
               onInsert={() => setInsertOpen(true)}
               onDelete={() => void onDeleteCollection(selected.name)}
             />
@@ -230,7 +264,7 @@ function EmptyHero({ onCreate }: { onCreate: () => void }) {
   );
 }
 
-function CollectionHeader(props: { collection: Collection; onInsert: () => void; onDelete: () => void }) {
+function CollectionHeader(props: { collection: Collection; livePulse: string; onInsert: () => void; onDelete: () => void }) {
   const { collection } = props;
   return (
     <div className="card card-pad">
@@ -239,6 +273,13 @@ function CollectionHeader(props: { collection: Collection; onInsert: () => void;
           <div className="flex items-center gap-2">
             <h2 className="text-[16px] font-semibold text-ink-900">{collection.name}</h2>
             <span className="chip chip-mono">{collection.fields.length} fields</span>
+            <span
+              className={`chip chip-mono ${props.livePulse ? "chip-copper animate-pulseCopper" : ""}`}
+              title="Live updates via Server-Sent Events"
+            >
+              <span className={`dot ${props.livePulse ? "" : "dot-idle"}`} />
+              {props.livePulse ? `LIVE · ${props.livePulse.toUpperCase()}` : "LIVE"}
+            </span>
           </div>
           <div className="mt-1 text-[11px] text-ink-400">
             Created {fmtDate(collection.created)} · Updated {fmtDate(collection.updated)}

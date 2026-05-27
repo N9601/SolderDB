@@ -23,6 +23,7 @@ import (
 	"solderdb/internal/auth"
 	"solderdb/internal/collections"
 	"solderdb/internal/engine"
+	"solderdb/internal/realtime"
 )
 
 type Config struct {
@@ -38,17 +39,18 @@ type Server struct {
 	db     *engine.DB
 	colls  *collections.Service
 	auth   *auth.Service
+	hub    *realtime.Hub
 	mux    *http.ServeMux
 	srv    *http.Server
 	mu     sync.Mutex
 	listen net.Listener
 }
 
-func New(db *engine.DB, colls *collections.Service, authSvc *auth.Service, cfg Config) *Server {
+func New(db *engine.DB, colls *collections.Service, authSvc *auth.Service, hub *realtime.Hub, cfg Config) *Server {
 	if cfg.Addr == "" {
 		cfg.Addr = "127.0.0.1:8787"
 	}
-	s := &Server{cfg: cfg, db: db, colls: colls, auth: authSvc, mux: http.NewServeMux()}
+	s := &Server{cfg: cfg, db: db, colls: colls, auth: authSvc, hub: hub, mux: http.NewServeMux()}
 	s.routes()
 	s.srv = &http.Server{
 		Handler:           s.withMiddleware(s.mux),
@@ -109,6 +111,76 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/auth/register", s.handleRegister)
 	s.mux.HandleFunc("/api/auth/login", s.handleLogin)
 	s.mux.HandleFunc("/api/auth/me", s.handleMe)
+	s.mux.HandleFunc("/api/realtime", s.handleRealtime)
+}
+
+// ---------------- Realtime (SSE) ----------------
+
+// handleRealtime upgrades the request to a Server-Sent Events stream.
+// Query params:
+//
+//	?topic=coll:notes&topic=kv:*
+//
+// Multiple ?topic= values are OR'd. If none given, defaults to "*".
+//
+// Wire format:
+//
+//	event: <kind>
+//	data: <json>
+//	\n
+func (s *Server) handleRealtime(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, 405, "method not allowed")
+		return
+	}
+	if s.hub == nil {
+		writeError(w, 500, "realtime not configured")
+		return
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, 500, "streaming unsupported")
+		return
+	}
+
+	topics := r.URL.Query()["topic"]
+	if len(topics) == 0 {
+		topics = []string{"*"}
+	}
+	ch, unsub := s.hub.Subscribe(topics...)
+	defer unsub()
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(200)
+	_, _ = fmt.Fprintf(w, ": connected topics=%v\n\n", topics)
+	flusher.Flush()
+
+	// Keep-alive ticker so proxies / clients don't decide we're dead.
+	ka := time.NewTicker(20 * time.Second)
+	defer ka.Stop()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-ka.C:
+			_, _ = fmt.Fprintf(w, ": keepalive\n\n")
+			flusher.Flush()
+		case evt, ok := <-ch:
+			if !ok {
+				return
+			}
+			b, err := json.Marshal(evt)
+			if err != nil {
+				continue
+			}
+			_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", evt.Kind, b)
+			flusher.Flush()
+		}
+	}
 }
 
 // ---------------- Auth handlers ----------------

@@ -63,13 +63,32 @@ type ListResult struct {
 	NextAfter string   `json:"nextAfter"`
 }
 
+// Notifier is the realtime hook. Optional — services without a notifier
+// behave exactly the same, just without emitting events.
+type Notifier interface {
+	Publish(topic string, kind, collection, id string, data interface{})
+}
+
 type Service struct {
-	db *engine.DB
-	mu sync.Mutex // serializes schema changes; record writes rely on engine locks
+	db       *engine.DB
+	notifier Notifier
+	mu       sync.Mutex // serializes schema changes; record writes rely on engine locks
 }
 
 func New(db *engine.DB) *Service {
 	return &Service{db: db}
+}
+
+// SetNotifier wires the realtime hub. Pass nil to disable.
+func (s *Service) SetNotifier(n Notifier) {
+	s.notifier = n
+}
+
+func (s *Service) notify(kind, collection, id string, data interface{}) {
+	if s.notifier == nil {
+		return
+	}
+	s.notifier.Publish("coll:"+collection+":"+id, kind, collection, id, data)
 }
 
 // Allow an optional leading underscore for internal collections like `_users`.
@@ -215,6 +234,7 @@ func (s *Service) Insert(collection string, data map[string]interface{}) (Record
 	if err := s.putRecord(collection, rec); err != nil {
 		return Record{}, err
 	}
+	s.notify("create", collection, rec.ID, rec)
 	return rec, nil
 }
 
@@ -258,6 +278,7 @@ func (s *Service) UpdateRecord(collection, id string, patch map[string]interface
 	if err := s.putRecord(collection, rec); err != nil {
 		return Record{}, err
 	}
+	s.notify("update", collection, rec.ID, rec)
 	return rec, nil
 }
 
@@ -265,7 +286,11 @@ func (s *Service) DeleteRecord(collection, id string) error {
 	if _, ok := s.db.Get(recKey(collection, id)); !ok {
 		return fmt.Errorf("record %q not found in %q", id, collection)
 	}
-	return s.db.Delete(recKey(collection, id))
+	if err := s.db.Delete(recKey(collection, id)); err != nil {
+		return err
+	}
+	s.notify("delete", collection, id, nil)
+	return nil
 }
 
 func (s *Service) ListRecords(collection string, after string, limit int) (ListResult, error) {
