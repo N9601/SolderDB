@@ -20,6 +20,11 @@ type Stats struct {
 	MemtableBytes int64  `json:"memtableBytes"`
 }
 
+type ListKeysOptions struct {
+	Prefix string `json:"prefix"`
+	Limit  int    `json:"limit"`
+}
+
 func NewDBService(dataDir string) (*DBService, error) {
 	db, err := engine.Open(engine.Options{DataDir: dataDir})
 	if err != nil {
@@ -79,3 +84,12 @@ func (s *DBService) GetStats() (Stats, error) {
 	}, nil
 }
 
+func (s *DBService) ListKeys(opts ListKeysOptions) ([]string, error) {
+	if s.db == nil {
+		return nil, fmt.Errorf("db not initialized")
+	}
+	return s.db.ListKeys(engine.ListKeysOptions{
+		Prefix: opts.Prefix,
+		Limit:  opts.Limit,
+	})
+}

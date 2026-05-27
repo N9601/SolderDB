@@ -88,3 +88,39 @@ func TestFlushCreatesSSTableAndResetsWAL(t *testing.T) {
 	}
 }
 
+func TestListKeysMergesMemtableAndSSTables(t *testing.T) {
+	dir := t.TempDir()
+	db, err := Open(Options{DataDir: dir, FlushThresholdBytes: 64})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	// Force flush by writing a large value.
+	if err := db.Set("alpha", strings.Repeat("a", 200)); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	// Now in a new memtable.
+	if err := db.Set("beta", "b"); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	if err := db.Delete("alpha"); err != nil {
+		t.Fatalf("del: %v", err)
+	}
+
+	keys, err := db.ListKeys(ListKeysOptions{})
+	if err != nil {
+		t.Fatalf("listkeys: %v", err)
+	}
+	if len(keys) != 1 || keys[0] != "beta" {
+		t.Fatalf("expected [beta], got %v", keys)
+	}
+
+	prefixKeys, err := db.ListKeys(ListKeysOptions{Prefix: "b"})
+	if err != nil {
+		t.Fatalf("listkeys prefix: %v", err)
+	}
+	if len(prefixKeys) != 1 || prefixKeys[0] != "beta" {
+		t.Fatalf("expected [beta], got %v", prefixKeys)
+	}
+}

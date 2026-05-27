@@ -58,6 +58,73 @@ type Options struct {
 	FlushThresholdBytes int64
 }
 
+type ListKeysOptions struct {
+	Prefix string
+	Limit  int
+}
+
+// ListKeys returns a sorted list of live keys visible to reads (memtable first, then SSTables newest->oldest).
+// Tombstoned keys are excluded. Limit<=0 means "no limit".
+func (db *DB) ListKeys(opts ListKeysOptions) ([]string, error) {
+	prefix := opts.Prefix
+	limit := opts.Limit
+
+	db.mu.RLock()
+	memSnapshot := make(map[string]memEntry, len(db.memtable))
+	for k, v := range db.memtable {
+		memSnapshot[k] = v
+	}
+	tables := append([]*sstable(nil), db.sstables...)
+	db.mu.RUnlock()
+
+	visible := make(map[string]struct{}, len(memSnapshot))
+	deleted := make(map[string]struct{})
+
+	for k, v := range memSnapshot {
+		if prefix != "" && (len(k) < len(prefix) || k[:len(prefix)] != prefix) {
+			continue
+		}
+		if v.deleted {
+			deleted[k] = struct{}{}
+			continue
+		}
+		visible[k] = struct{}{}
+	}
+
+	// Newest->oldest so newer tables shadow older ones.
+	for i := len(tables) - 1; i >= 0; i-- {
+		keys, tombs, err := tables[i].listKeys(prefix)
+		if err != nil {
+			return nil, err
+		}
+		for _, k := range tombs {
+			if _, alreadyVisible := visible[k]; alreadyVisible {
+				continue
+			}
+			deleted[k] = struct{}{}
+		}
+		for _, k := range keys {
+			if _, isDeleted := deleted[k]; isDeleted {
+				continue
+			}
+			if _, alreadyVisible := visible[k]; alreadyVisible {
+				continue
+			}
+			visible[k] = struct{}{}
+		}
+	}
+
+	out := make([]string, 0, len(visible))
+	for k := range visible {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
 func Open(opts Options) (*DB, error) {
 	dataDir := opts.DataDir
 	if dataDir == "" {
@@ -558,6 +625,34 @@ func (t *sstable) get(key string) (value string, ok bool, deleted bool, err erro
 		return "", true, true, nil
 	}
 	return string(vb), true, false, nil
+}
+
+func (t *sstable) listKeys(prefix string) (keys []string, tombstones []string, err error) {
+	// For now, read by random access per key to learn tombstones.
+	// This is OK for small browsing; later we can cache tombstone bitsets or add a key-only index.
+	start := 0
+	if prefix != "" {
+		start = sort.Search(len(t.keys), func(i int) bool { return t.keys[i] >= prefix })
+	}
+	for i := start; i < len(t.keys); i++ {
+		k := t.keys[i]
+		if prefix != "" && (len(k) < len(prefix) || k[:len(prefix)] != prefix) {
+			break
+		}
+		_, ok, deleted, err := t.get(k)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !ok {
+			continue
+		}
+		if deleted {
+			tombstones = append(tombstones, k)
+			continue
+		}
+		keys = append(keys, k)
+	}
+	return keys, tombstones, nil
 }
 
 // flushMemtableToSSTableLocked flushes the current memtable into a new immutable SSTable.

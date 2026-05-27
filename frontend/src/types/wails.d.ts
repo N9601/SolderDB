@@ -13,6 +13,7 @@ export type DBServiceApi = {
   Set(key: string, value: string): Promise<void>;
   Delete(key: string): Promise<void>;
   GetStats(): Promise<DBStats>;
+  ListKeys(opts: { prefix: string; limit: number }): Promise<string[]>;
 };
 
 declare global {
@@ -24,4 +25,3 @@ declare global {
     };
   }
 }
-

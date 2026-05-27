@@ -31,6 +31,9 @@ export default function App() {
   const [status, setStatus] = useState<string>("");
   const [stats, setStats] = useState<DBStats | null>(null);
   const [recent, setRecent] = useState<KVRow[]>([]);
+  const [keyPrefix, setKeyPrefix] = useState<string>("");
+  const [keys, setKeys] = useState<string[]>([]);
+  const [selectedKey, setSelectedKey] = useState<string>("");
 
   async function refreshStats() {
     if (!api) return;
@@ -38,15 +41,28 @@ export default function App() {
     setStats(st);
   }
 
+  async function refreshKeys() {
+    if (!api) return;
+    const list = await api.ListKeys({ prefix: keyPrefix, limit: 200 });
+    setKeys(list);
+  }
+
   useEffect(() => {
     if (!api) return;
     void refreshStats();
+    void refreshKeys();
     const id = window.setInterval(() => {
       void refreshStats();
     }, 1000);
     return () => window.clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api]);
+
+  useEffect(() => {
+    if (!api) return;
+    void refreshKeys();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api, keyPrefix]);
 
   async function onGet() {
     if (!api) {
@@ -68,6 +84,7 @@ export default function App() {
     await api.Set(key, value);
     setRecent((prev) => [{ key, value }, ...prev].slice(0, 20));
     await refreshStats();
+    await refreshKeys();
     setStatus("Saved");
   }
 
@@ -79,6 +96,7 @@ export default function App() {
     setStatus("");
     await api.Delete(key);
     await refreshStats();
+    await refreshKeys();
     setStatus("Deleted (tombstone)");
   }
 
@@ -161,6 +179,55 @@ export default function App() {
           </div>
         </section>
 
+        <section className="mb-6 rounded-xl border border-zinc-800 bg-zinc-900/30 p-4">
+          <h2 className="text-sm font-medium text-zinc-200">Data browser</h2>
+
+          <div className="mt-3 space-y-3">
+            <div>
+              <label className="text-xs text-zinc-400">Key prefix filter</label>
+              <input
+                value={keyPrefix}
+                onChange={(e) => setKeyPrefix(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm outline-none"
+                placeholder="e.g. user:"
+              />
+              <div className="mt-2 text-xs text-zinc-500">
+                Showing up to 200 keys. Tombstoned keys are hidden.
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950">
+              {keys.length === 0 ? (
+                <div className="px-3 py-2 text-sm text-zinc-500">No keys found.</div>
+              ) : (
+                <div className="max-h-56 overflow-auto">
+                  {keys.map((k) => (
+                    <button
+                      key={k}
+                      onClick={() => {
+                        setSelectedKey(k);
+                        setKey(k);
+                        void (async () => {
+                          if (!api) return;
+                          const v = await api.Get(k);
+                          setReadValue(v);
+                        })();
+                      }}
+                      className="block w-full border-b border-zinc-900 px-3 py-2 text-left text-sm hover:bg-zinc-900/40"
+                    >
+                      <div className="truncate">{k}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="text-xs text-zinc-500">
+              Selected: <span className="text-zinc-300">{selectedKey || "—"}</span>
+            </div>
+          </div>
+        </section>
+
         <section className="rounded-xl border border-zinc-800 bg-zinc-900/30 p-4">
           <h2 className="text-sm font-medium text-zinc-200">Recent writes</h2>
           <div className="mt-3 space-y-2">
@@ -192,4 +259,3 @@ function Metric(props: { label: string; value: string }) {
     </div>
   );
 }
-
