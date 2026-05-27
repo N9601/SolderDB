@@ -14,6 +14,7 @@ import { bridge } from "./wailsjs/go/models";
 import { Logo } from "./components/Logo";
 import CollectionsView from "./views/CollectionsView";
 import FilesView from "./views/FilesView";
+import ApiExplorerView from "./views/ApiExplorerView";
 import AuthView from "./views/AuthView";
 import { VerifyToken } from "./wailsjs/go/bridge/AuthService";
 import type { bridge as bridgeNS } from "./wailsjs/go/models";
@@ -30,7 +31,7 @@ type Row = {
 
 type ValueType = "json" | "number" | "text" | "empty";
 
-type NavId = "dashboard" | "collections" | "files" | "console" | "browser" | "snapshots" | "settings";
+type NavId = "dashboard" | "collections" | "files" | "api" | "console" | "browser" | "snapshots" | "settings";
 
 const PAGE_SIZE = 50;
 const PREVIEW_BYTES = 80;
@@ -112,6 +113,16 @@ const NAV: { id: NavId; label: string; icon: JSX.Element }[] = [
       <svg className="nav-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
         <polyline points="14 2 14 8 20 8" />
+      </svg>
+    )
+  },
+  {
+    id: "api",
+    label: "API Explorer",
+    icon: (
+      <svg className="nav-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+        <polyline points="16 18 22 12 16 6" />
+        <polyline points="8 6 2 12 8 18" />
       </svg>
     )
   },
@@ -489,6 +500,7 @@ function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
           )}
           {nav === "collections" && <CollectionsView onStatus={setStatus} />}
           {nav === "files" && <FilesView onStatus={setStatus} />}
+          {nav === "api" && <ApiExplorerView />}
           {nav === "console" && (
             <ConsoleView
               key_={key}
