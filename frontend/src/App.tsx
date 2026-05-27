@@ -462,7 +462,7 @@ function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
             </button>
           </div>
           <div className="flex items-center justify-between text-[10px] text-canvas-300">
-            <span className="font-mono">v0.2.0</span>
+            <span className="font-mono">v0.3.0</span>
             <span className="chip-mono inline-flex items-center gap-1.5 text-canvas-200">
               <span className={`dot ${writePulse ? "" : "dot-idle"}`} />
               {writePulse ? "WRITE" : "IDLE"}
