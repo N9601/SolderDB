@@ -16,6 +16,7 @@ export type DBServiceApi = {
   GetStats(): Promise<DBStats>;
   ListKeys(opts: { prefix: string; limit: number }): Promise<string[]>;
   Compact(): Promise<void>;
+  Scan(opts: { prefix: string; after: string; limit: number }): Promise<{ keys: string[]; nextAfter: string }>;
 };
 
 declare global {

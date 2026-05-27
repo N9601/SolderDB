@@ -63,6 +63,17 @@ type ListKeysOptions struct {
 	Limit  int
 }
 
+type ScanOptions struct {
+	Prefix string
+	After  string // exclusive cursor; return keys strictly greater than After
+	Limit  int    // must be >0
+}
+
+type ScanResult struct {
+	Keys       []string
+	NextAfter  string // empty when no more results
+}
+
 // ListKeys returns a sorted list of live keys visible to reads (memtable first, then SSTables newest->oldest).
 // Tombstoned keys are excluded. Limit<=0 means "no limit".
 func (db *DB) ListKeys(opts ListKeysOptions) ([]string, error) {
@@ -123,6 +134,40 @@ func (db *DB) ListKeys(opts ListKeysOptions) ([]string, error) {
 		out = out[:limit]
 	}
 	return out, nil
+}
+
+// Scan returns keys in sorted order using a cursor. This is intended for UI pagination.
+func (db *DB) Scan(opts ScanOptions) (ScanResult, error) {
+	if opts.Limit <= 0 {
+		return ScanResult{}, errors.New("scan limit must be > 0")
+	}
+	all, err := db.ListKeys(ListKeysOptions{Prefix: opts.Prefix, Limit: 0})
+	if err != nil {
+		return ScanResult{}, err
+	}
+
+	start := 0
+	if opts.After != "" {
+		start = sort.SearchStrings(all, opts.After)
+		for start < len(all) && all[start] <= opts.After {
+			start++
+		}
+	}
+
+	if start >= len(all) {
+		return ScanResult{Keys: nil, NextAfter: ""}, nil
+	}
+
+	end := start + opts.Limit
+	if end > len(all) {
+		end = len(all)
+	}
+	keys := append([]string(nil), all[start:end]...)
+	nextAfter := ""
+	if end < len(all) {
+		nextAfter = keys[len(keys)-1]
+	}
+	return ScanResult{Keys: keys, NextAfter: nextAfter}, nil
 }
 
 func Open(opts Options) (*DB, error) {

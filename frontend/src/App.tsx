@@ -34,6 +34,8 @@ export default function App() {
   const [keyPrefix, setKeyPrefix] = useState<string>("");
   const [keys, setKeys] = useState<string[]>([]);
   const [selectedKey, setSelectedKey] = useState<string>("");
+  const [scanAfter, setScanAfter] = useState<string>("");
+  const [scanNextAfter, setScanNextAfter] = useState<string>("");
 
   async function refreshStats() {
     if (!api) return;
@@ -43,8 +45,9 @@ export default function App() {
 
   async function refreshKeys() {
     if (!api) return;
-    const list = await api.ListKeys({ prefix: keyPrefix, limit: 200 });
-    setKeys(list);
+    const res = await api.Scan({ prefix: keyPrefix, after: scanAfter, limit: 200 });
+    setKeys(res.keys);
+    setScanNextAfter(res.nextAfter);
   }
 
   useEffect(() => {
@@ -62,7 +65,7 @@ export default function App() {
     if (!api) return;
     void refreshKeys();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api, keyPrefix]);
+  }, [api, keyPrefix, scanAfter]);
 
   async function onGet() {
     if (!api) {
@@ -213,7 +216,7 @@ export default function App() {
                 placeholder="e.g. user:"
               />
               <div className="mt-2 text-xs text-zinc-500">
-                Showing up to 200 keys. Tombstoned keys are hidden.
+                Showing up to 200 keys per page. Tombstoned keys are hidden.
               </div>
             </div>
 
@@ -241,6 +244,28 @@ export default function App() {
                   ))}
                 </div>
               )}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => {
+                  setScanAfter("");
+                  setSelectedKey("");
+                }}
+                className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm"
+              >
+                First page
+              </button>
+              <button
+                onClick={() => {
+                  if (!scanNextAfter) return;
+                  setScanAfter(scanNextAfter);
+                }}
+                disabled={!scanNextAfter}
+                className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm disabled:opacity-50"
+              >
+                Next page
+              </button>
             </div>
 
             <div className="text-xs text-zinc-500">

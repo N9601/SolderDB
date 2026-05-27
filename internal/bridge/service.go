@@ -26,6 +26,17 @@ type ListKeysOptions struct {
 	Limit  int    `json:"limit"`
 }
 
+type ScanOptions struct {
+	Prefix string `json:"prefix"`
+	After  string `json:"after"`
+	Limit  int    `json:"limit"`
+}
+
+type ScanResult struct {
+	Keys      []string `json:"keys"`
+	NextAfter string   `json:"nextAfter"`
+}
+
 func NewDBService(dataDir string) (*DBService, error) {
 	db, err := engine.Open(engine.Options{DataDir: dataDir})
 	if err != nil {
@@ -101,4 +112,19 @@ func (s *DBService) Compact() error {
 		return fmt.Errorf("db not initialized")
 	}
 	return s.db.Compact()
+}
+
+func (s *DBService) Scan(opts ScanOptions) (ScanResult, error) {
+	if s.db == nil {
+		return ScanResult{}, fmt.Errorf("db not initialized")
+	}
+	res, err := s.db.Scan(engine.ScanOptions{
+		Prefix: opts.Prefix,
+		After:  opts.After,
+		Limit:  opts.Limit,
+	})
+	if err != nil {
+		return ScanResult{}, err
+	}
+	return ScanResult{Keys: res.Keys, NextAfter: res.NextAfter}, nil
 }
