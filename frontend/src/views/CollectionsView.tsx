@@ -6,6 +6,7 @@ import {
   InsertRecord,
   ListCollections,
   ListRecords,
+  UpdateCollection,
   UpdateRecord
 } from "../wailsjs/go/bridge/CollectionsService";
 import { GetAPIAddr } from "../wailsjs/go/bridge/DBService";
@@ -28,6 +29,7 @@ export default function CollectionsView({ onStatus }: Props) {
   const [selected, setSelected] = useState<Collection | null>(null);
   const [records, setRecords] = useState<Record_[]>([]);
   const [creatingCollection, setCreatingCollection] = useState(false);
+  const [editingSchema, setEditingSchema] = useState(false);
   const [editingRecord, setEditingRecord] = useState<Record_ | null>(null);
   const [insertOpen, setInsertOpen] = useState(false);
   const [livePulse, setLivePulse] = useState<string>("");
@@ -186,6 +188,7 @@ export default function CollectionsView({ onStatus }: Props) {
               collection={selected}
               livePulse={livePulse}
               onInsert={() => setInsertOpen(true)}
+              onEditSchema={() => setEditingSchema(true)}
               onDelete={() => void onDeleteCollection(selected.name)}
             />
             <RecordsTable
@@ -228,6 +231,19 @@ export default function CollectionsView({ onStatus }: Props) {
           }}
         />
       )}
+      {editingSchema && selected && (
+        <SchemaEditorModal
+          collection={selected}
+          onClose={() => setEditingSchema(false)}
+          onSaved={async (c) => {
+            setEditingSchema(false);
+            onStatus(`Updated schema for ${c.name}`);
+            setSelected(c);
+            await refresh();
+          }}
+          onError={(e) => onStatus(`Schema error: ${e}`)}
+        />
+      )}
       {editingRecord && selected && (
         <RecordModal
           collection={selected}
@@ -265,7 +281,13 @@ function EmptyHero({ onCreate }: { onCreate: () => void }) {
   );
 }
 
-function CollectionHeader(props: { collection: Collection; livePulse: string; onInsert: () => void; onDelete: () => void }) {
+function CollectionHeader(props: {
+  collection: Collection;
+  livePulse: string;
+  onInsert: () => void;
+  onEditSchema: () => void;
+  onDelete: () => void;
+}) {
   const { collection } = props;
   return (
     <div className="card card-pad">
@@ -296,6 +318,9 @@ function CollectionHeader(props: { collection: Collection; livePulse: string; on
           </div>
         </div>
         <div className="flex gap-2">
+          <button className="btn" onClick={props.onEditSchema}>
+            Edit schema
+          </button>
           <button className="btn btn-danger" onClick={props.onDelete}>
             Delete
           </button>
@@ -481,6 +506,98 @@ function CreateCollectionModal(props: {
           </button>
           <button className="btn btn-primary" onClick={() => void submit()} disabled={!name.trim()}>
             Create
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function SchemaEditorModal(props: {
+  collection: Collection;
+  onClose: () => void;
+  onSaved: (c: Collection) => void;
+  onError: (e: string) => void;
+}) {
+  const [fields, setFields] = useState<Field[]>(() => props.collection.fields.map((f) => ({ ...f })));
+
+  function updateField(i: number, patch: Partial<Field>) {
+    setFields(fields.map((f, idx) => (idx === i ? { ...f, ...patch } : f)));
+  }
+  function addField() {
+    setFields([...fields, { name: "", type: "text", required: false, unique: false }]);
+  }
+  function removeField(i: number) {
+    setFields(fields.filter((_, idx) => idx !== i));
+  }
+
+  async function submit() {
+    try {
+      const cleaned = fields.filter((f) => f.name.trim() !== "");
+      const updated = await UpdateCollection(props.collection.name, cleaned);
+      props.onSaved(updated);
+    } catch (e) {
+      props.onError(String(e));
+    }
+  }
+
+  return (
+    <Modal onClose={props.onClose} title={`Edit schema · ${props.collection.name}`} wide>
+      <div className="space-y-4">
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11.5px] text-amber-800">
+          Removing a field doesn&apos;t delete data from existing records — old values remain on disk but become invisible.
+          Renaming is a remove + add.
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between">
+            <label className="label">Fields</label>
+            <button className="btn btn-ghost" onClick={addField}>
+              + Field
+            </button>
+          </div>
+          <div className="mt-2 space-y-2">
+            {fields.map((f, i) => (
+              <div key={i} className="grid grid-cols-12 items-center gap-2 rounded-md border border-canvas-200 bg-canvas-100 p-2">
+                <input
+                  value={f.name}
+                  onChange={(e) => updateField(i, { name: e.target.value })}
+                  placeholder="field_name"
+                  className="field col-span-5"
+                />
+                <select
+                  value={f.type}
+                  onChange={(e) => updateField(i, { type: e.target.value })}
+                  className="field col-span-3"
+                >
+                  {FIELD_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+                <label className="col-span-3 flex items-center gap-2 text-[12px] text-ink-700">
+                  <input
+                    type="checkbox"
+                    checked={f.required}
+                    onChange={(e) => updateField(i, { required: e.target.checked })}
+                  />
+                  Required
+                </label>
+                <button className="btn btn-ghost btn-icon col-span-1" onClick={() => removeField(i)} title="Remove">
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-canvas-200 pt-4">
+          <button className="btn" onClick={props.onClose}>
+            Cancel
+          </button>
+          <button className="btn btn-primary" onClick={() => void submit()} disabled={fields.length === 0}>
+            Save schema
           </button>
         </div>
       </div>
