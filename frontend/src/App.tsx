@@ -18,6 +18,7 @@ import ApiExplorerView from "./views/ApiExplorerView";
 import LogsView from "./views/LogsView";
 import AuthView from "./views/AuthView";
 import { VerifyToken } from "./wailsjs/go/bridge/AuthService";
+import { GetStatus as GetHardwareStatus, GetThresholds, SetThresholds } from "./wailsjs/go/bridge/HardwareService";
 import type { bridge as bridgeNS } from "./wailsjs/go/models";
 import { getToken, setToken } from "./lib/apiFetch";
 
@@ -255,6 +256,7 @@ function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
 
   const [writePulse, setWritePulse] = useState<boolean>(false);
   const [apiAddr, setApiAddr] = useState<string>("");
+  const [hw, setHw] = useState<bridgeNS.HardwareStatus | null>(null);
   const ledTimer = useRef<number | null>(null);
 
   function pulseWrite() {
@@ -268,6 +270,11 @@ function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
       setStats(await GetStats());
     } catch (e) {
       setStatus(`Stats error: ${String(e)}`);
+    }
+    try {
+      setHw(await GetHardwareStatus());
+    } catch {
+      // hardware service may not be present in all builds
     }
   }
 
@@ -491,6 +498,14 @@ function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
                 ⟁ API · {apiAddr.replace(/^https?:\/\//, "")}
               </a>
             )}
+            {hw?.throttled && (
+              <span
+                className="chip chip-mono border-amber-200 bg-amber-50 text-amber-800"
+                title={`Compaction paused — ${hw.reason}`}
+              >
+                ⚠ Compaction paused · {hw.reason}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <button className="btn-ghost btn" onClick={() => void refreshStats()}>
@@ -512,7 +527,7 @@ function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
         {/* Content */}
         <div className="flex-1 overflow-auto px-6 py-6">
           {nav === "dashboard" && (
-            <DashboardView stats={stats} writePulse={writePulse} />
+            <DashboardView stats={stats} writePulse={writePulse} hw={hw} />
           )}
           {nav === "collections" && <CollectionsView onStatus={setStatus} />}
           {nav === "files" && <FilesView onStatus={setStatus} />}
@@ -568,8 +583,8 @@ function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
 
 /* ---------------------- Views ---------------------- */
 
-function DashboardView(props: { stats: DBStats | null; writePulse: boolean }) {
-  const { stats, writePulse } = props;
+function DashboardView(props: { stats: DBStats | null; writePulse: boolean; hw: bridgeNS.HardwareStatus | null }) {
+  const { stats, writePulse, hw } = props;
   return (
     <div className="animate-slideUp space-y-6">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -582,6 +597,8 @@ function DashboardView(props: { stats: DBStats | null; writePulse: boolean }) {
         <StatMono label="Data Dir" value={stats?.dataDir ?? "—"} />
         <StatMono label="WAL Path" value={stats?.walPath ?? "—"} />
       </div>
+
+      {hw && <HardwareCard hw={hw} />}
 
       <div className="card card-pad">
         <div className="mb-3 flex items-center justify-between">
@@ -597,6 +614,120 @@ function DashboardView(props: { stats: DBStats | null; writePulse: boolean }) {
         </div>
         <ArchDiagram />
       </div>
+    </div>
+  );
+}
+
+function HardwareCard(props: { hw: bridgeNS.HardwareStatus }) {
+  const { hw } = props;
+  const [thresh, setThresh] = useState<bridgeNS.HardwareThresholds | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        setThresh(await GetThresholds());
+      } catch {
+        // ignore
+      }
+    })();
+  }, []);
+
+  async function save(update: Partial<bridgeNS.HardwareThresholds>) {
+    if (!thresh) return;
+    const merged = { ...thresh, ...update } as bridgeNS.HardwareThresholds;
+    try {
+      const next = await SetThresholds(merged);
+      setThresh(next);
+    } catch {
+      // ignore
+    }
+  }
+
+  return (
+    <div className="card card-pad">
+      <div className="mb-3 flex items-center justify-between">
+        <div>
+          <div className="section-title">Hardware-Aware Compaction</div>
+          <div className="section-sub">
+            SolderDB skips heavy disk work when your machine is under stress.
+          </div>
+        </div>
+        <span
+          className={`chip chip-mono ${hw.throttled ? "border-amber-200 bg-amber-50 text-amber-800" : "chip-steel"}`}
+        >
+          <span className={`dot ${hw.throttled ? "" : "dot-idle"}`} />
+          {hw.throttled ? `Throttled · ${hw.reason}` : "Healthy"}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <HwStat
+          label="Power"
+          value={hw.onBattery ? "Battery" : "AC"}
+          tone={hw.onBattery ? "warn" : "ok"}
+        />
+        <HwStat
+          label="Battery"
+          value={hw.batteryKnown ? `${hw.batteryPct}%` : "—"}
+          tone={hw.batteryKnown && hw.batteryPct < 25 ? "warn" : "ok"}
+        />
+        <HwStat
+          label="CPU Temp"
+          value={hw.cpuTempKnown ? `${hw.cpuTempC.toFixed(1)}°C` : "—"}
+          tone={hw.cpuTempKnown && hw.cpuTempC > 80 ? "warn" : "ok"}
+        />
+        <HwStat label="Platform" value={hw.platform} tone="ok" />
+      </div>
+
+      {thresh && (
+        <div className="mt-4 grid grid-cols-1 gap-3 rounded-lg border border-canvas-200 bg-canvas-100 p-4 md:grid-cols-3">
+          <div>
+            <label className="label">Min battery % (when unplugged)</label>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={thresh.minBatteryPct}
+              onChange={(e) => void save({ minBatteryPct: Number(e.target.value) || 0 })}
+              className="field mt-1"
+            />
+          </div>
+          <div>
+            <label className="label">Max CPU temp (°C)</label>
+            <input
+              type="number"
+              min={0}
+              max={120}
+              value={thresh.maxCpuTempC}
+              onChange={(e) => void save({ maxCpuTempC: Number(e.target.value) || 0 })}
+              className="field mt-1"
+            />
+          </div>
+          <div>
+            <label className="label">Pause whenever on battery</label>
+            <div className="mt-2">
+              <label className="flex items-center gap-2 text-[12.5px] text-ink-700">
+                <input
+                  type="checkbox"
+                  checked={thresh.pauseOnBattery}
+                  onChange={(e) => void save({ pauseOnBattery: e.target.checked })}
+                />
+                Yes — never compact on battery
+              </label>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HwStat(props: { label: string; value: string; tone: "ok" | "warn" }) {
+  const color = props.tone === "warn" ? "text-warn" : "text-ink-900";
+  return (
+    <div className="rounded-lg border border-canvas-200 bg-white px-3 py-2">
+      <div className="stat-label">{props.label}</div>
+      <div className={`mt-1 font-mono text-[15px] font-semibold ${color}`}>{props.value}</div>
     </div>
   );
 }

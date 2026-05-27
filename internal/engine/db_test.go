@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -279,6 +280,39 @@ func TestWALCorruptedTailIsIgnored(t *testing.T) {
 	}
 	if _, ok := db2.Get("bad"); ok {
 		t.Fatalf("corrupted tail record should have been ignored")
+	}
+}
+
+type denyGate struct{ reason string }
+
+func (d denyGate) Allow() (bool, string) { return false, d.reason }
+
+func TestCompactionGateBlocks(t *testing.T) {
+	dir := t.TempDir()
+	db, err := Open(Options{DataDir: dir, FlushThresholdBytes: 64})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	// Force at least two SSTables so compaction actually has work to do.
+	for i := 0; i < 3; i++ {
+		if err := db.Set("k"+strconv.Itoa(i), strings.Repeat("x", 200)); err != nil {
+			t.Fatalf("set: %v", err)
+		}
+	}
+
+	db.SetCompactionGate(denyGate{reason: "battery low"})
+	err = db.Compact()
+	if err == nil {
+		t.Fatal("expected throttle error, got nil")
+	}
+	var throttled *ErrCompactionThrottled
+	if !errors.As(err, &throttled) {
+		t.Fatalf("expected *ErrCompactionThrottled, got %T: %v", err, err)
+	}
+	if throttled.Reason != "battery low" {
+		t.Fatalf("reason mismatch: %q", throttled.Reason)
 	}
 }
 

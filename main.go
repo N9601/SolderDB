@@ -57,6 +57,7 @@ func main() {
 	app.svc = svc
 	hub := realtime.NewHub()
 	colls := bridge.NewCollectionsService(svc.Engine())
+	hwSvc := bridge.NewHardwareService(svc.Engine())
 	var authBridge *bridge.AuthService
 
 	// Start the local REST API on 127.0.0.1:8787 so SDKs/CLIs/curl can hit it.
@@ -107,6 +108,7 @@ func main() {
 			app.svc,
 			colls,
 			authBridge,
+			hwSvc,
 		},
 	}); err != nil {
 		log.Fatal(err)

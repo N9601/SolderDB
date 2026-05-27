@@ -97,6 +97,26 @@ type memEntry struct {
 	deleted bool
 }
 
+// CompactionGate decides whether heavy disk work is allowed right now. The
+// engine consults this before each compaction. Returning false short-circuits
+// the operation with the supplied reason — surfaced in errors and the UI.
+type CompactionGate interface {
+	Allow() (ok bool, reason string)
+}
+
+// alwaysAllow is the default gate (no hardware throttling).
+type alwaysAllow struct{}
+
+func (alwaysAllow) Allow() (bool, string) { return true, "" }
+
+// ErrCompactionThrottled is returned from Compact when the gate denies.
+// Callers can type-check this to distinguish "real failure" from "deferred".
+type ErrCompactionThrottled struct{ Reason string }
+
+func (e *ErrCompactionThrottled) Error() string {
+	return "compaction throttled: " + e.Reason
+}
+
 type DB struct {
 	mu       sync.RWMutex
 	memtable map[string]memEntry
@@ -111,6 +131,8 @@ type DB struct {
 	sstables []*sstable
 
 	flushThresholdBytes int64
+
+	gate CompactionGate
 }
 
 type Stats struct {
@@ -289,6 +311,7 @@ func Open(opts Options) (*DB, error) {
 		sstDir:    sstDir,
 
 		flushThresholdBytes: 1 * 1024 * 1024, // 1MB
+		gate:                alwaysAllow{},
 	}
 	if opts.FlushThresholdBytes > 0 {
 		db.flushThresholdBytes = opts.FlushThresholdBytes
@@ -580,15 +603,33 @@ func copyFile(src, dst string) error {
 	return out.Close()
 }
 
+// SetCompactionGate installs a hardware-aware (or any other) policy that the
+// engine consults before each Compact(). Pass nil to clear.
+func (db *DB) SetCompactionGate(g CompactionGate) {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	if g == nil {
+		db.gate = alwaysAllow{}
+		return
+	}
+	db.gate = g
+}
+
 // Compact merges all current SSTables into a single new SSTable (newest-wins).
 // This reduces the number of files and improves read performance.
 func (db *DB) Compact() error {
 	db.mu.RLock()
 	tables := append([]*sstable(nil), db.sstables...)
+	gate := db.gate
 	db.mu.RUnlock()
 
 	if len(tables) <= 1 {
 		return nil
+	}
+	if gate != nil {
+		if ok, reason := gate.Allow(); !ok {
+			return &ErrCompactionThrottled{Reason: reason}
+		}
 	}
 
 	merged := make(map[string]sstRecord, 1024)
