@@ -22,6 +22,9 @@ import (
 //go:embed all:frontend/dist/*
 var assets embed.FS
 
+//go:embed all:docs/*.md
+var docsFS embed.FS
+
 type App struct {
 	ctx context.Context
 	svc *bridge.DBService
@@ -109,6 +112,7 @@ func main() {
 			colls,
 			authBridge,
 			hwSvc,
+			bridge.NewDocsService(docsFS),
 		},
 	}); err != nil {
 		log.Fatal(err)

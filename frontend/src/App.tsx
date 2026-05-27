@@ -18,6 +18,7 @@ import ApiExplorerView from "./views/ApiExplorerView";
 import LogsView from "./views/LogsView";
 import LifecycleView from "./views/LifecycleView";
 import ProfileView from "./views/ProfileView";
+import DocsView from "./views/DocsView";
 import AuthView from "./views/AuthView";
 import { VerifyToken } from "./wailsjs/go/bridge/AuthService";
 import { GetStatus as GetHardwareStatus, GetThresholds, SetThresholds } from "./wailsjs/go/bridge/HardwareService";
@@ -40,7 +41,7 @@ type Row = {
 
 type ValueType = "json" | "number" | "text" | "empty";
 
-type NavId = "dashboard" | "lifecycle" | "collections" | "files" | "api" | "logs" | "console" | "browser" | "snapshots" | "settings" | "profile";
+type NavId = "dashboard" | "lifecycle" | "collections" | "files" | "api" | "logs" | "console" | "browser" | "snapshots" | "settings" | "profile" | "docs";
 
 const PAGE_SIZE = 50;
 const PREVIEW_BYTES = 80;
@@ -186,6 +187,18 @@ const NAV: { id: NavId; label: string; icon: JSX.Element }[] = [
         <rect x="3" y="6" width="18" height="14" rx="2" />
         <circle cx="12" cy="13" r="3.5" />
         <path d="M8 6l2-2h4l2 2" />
+      </svg>
+    )
+  },
+  {
+    id: "docs",
+    label: "Docs",
+    icon: (
+      <svg className="nav-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+        <path d="M4 4h12a4 4 0 0 1 4 4v12a0 0 0 0 1 0 0H8a4 4 0 0 1-4-4V4z" />
+        <line x1="8" y1="9" x2="16" y2="9" />
+        <line x1="8" y1="13" x2="16" y2="13" />
+        <line x1="8" y1="17" x2="13" y2="17" />
       </svg>
     )
   },
@@ -646,7 +659,7 @@ function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
                 </span>
               </button>
               <div className="flex items-center justify-between text-[10px] text-canvas-300">
-                <span className="font-mono">v0.3.0</span>
+                <span className="font-mono">v1.0.0</span>
                 <span className="chip-mono inline-flex items-center gap-1.5 text-canvas-200">
                   <span className={`dot ${writePulse ? "" : "dot-idle"}`} />
                   {writePulse ? "WRITE" : "IDLE"}
@@ -800,6 +813,7 @@ function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
           {nav === "snapshots" && <SnapshotsView dataDir={stats?.dataDir ?? ""} onSnapshot={() => void onSnapshot()} />}
           {nav === "settings" && <SettingsView stats={stats} apiAddr={apiAddr} />}
           {nav === "profile" && <ProfileView user={props.user} onSignOut={props.onSignOut} />}
+          {nav === "docs" && <DocsView />}
         </div>
       </main>
 

@@ -1,6 +1,6 @@
 {
   "name": "solderdb",
-  "version": "0.3.0",
+  "version": "1.0.0",
   "description": "JavaScript / TypeScript SDK for SolderDB — local-first single-binary database.",
   "type": "module",
   "main": "./dist/index.js",

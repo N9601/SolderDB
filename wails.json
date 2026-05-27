@@ -8,14 +8,16 @@
   "frontend:dev:serverUrl": "http://localhost:5173",
   "frontend:dir": "./frontend",
   "wailsjsdir": "./frontend/src",
+  "nsisType": "single",
   "author": {
-    "name": "",
+    "name": "N9601",
     "email": ""
   },
   "info": {
-    "companyName": "",
+    "companyName": "SolderDB",
     "productName": "SolderDB",
-    "productVersion": "0.3.0",
-    "copyright": ""
+    "productVersion": "1.0.0",
+    "copyright": "© 2026 SolderDB. MIT Licensed.",
+    "comments": "Local-first single-binary database. LSM engine + REST + auth + realtime, built from scratch in Go."
   }
 }
