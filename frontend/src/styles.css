@@ -2,8 +2,37 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
+:root,
+[data-theme="light"] {
   color-scheme: light;
+
+  --bg: theme("colors.canvas.50");
+  --bg-elev: #ffffff;
+  --bg-soft: theme("colors.canvas.100");
+  --bg-softer: theme("colors.canvas.150");
+  --border: theme("colors.canvas.200");
+  --border-strong: theme("colors.canvas.300");
+  --fg: theme("colors.ink.900");
+  --fg-muted: theme("colors.ink.500");
+  --fg-soft: theme("colors.ink.400");
+  --fg-faint: theme("colors.ink.300");
+  --sheen: rgba(224, 122, 37, 0.06);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #0c0f14;
+  --bg-elev: #14181f;
+  --bg-soft: #1a1f29;
+  --bg-softer: #232936;
+  --border: #2a3140;
+  --border-strong: #394257;
+  --fg: #e7ebf2;
+  --fg-muted: #a3acbd;
+  --fg-soft: #7f8a9d;
+  --fg-faint: #5a6479;
+  --sheen: rgba(224, 122, 37, 0.10);
 }
 
 html,
@@ -13,11 +42,120 @@ body,
 }
 
 body {
-  background: theme("colors.canvas.50");
-  color: theme("colors.ink.700");
+  background: var(--bg);
+  color: var(--fg);
   font-family: theme("fontFamily.sans");
   -webkit-font-smoothing: antialiased;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+/* --- Dark theme overrides for the workspace ---
+   We only retarget the *workspace* surfaces; the sidebar (.sidebar) is already
+   dark in both themes. This block lets the rest of the app flip without
+   touching individual components. */
+[data-theme="dark"] .card,
+[data-theme="dark"] .bg-white {
+  background: var(--bg-elev) !important;
+  border-color: var(--border);
+}
+[data-theme="dark"] .field {
+  background: var(--bg-soft);
+  border-color: var(--border);
+  color: var(--fg);
+}
+[data-theme="dark"] .field::placeholder {
+  color: var(--fg-faint);
+}
+[data-theme="dark"] .btn {
+  background: var(--bg-elev);
+  border-color: var(--border);
+  color: var(--fg);
+}
+[data-theme="dark"] .btn:hover:not(:disabled) {
+  background: var(--bg-soft);
+  border-color: var(--border-strong);
+}
+[data-theme="dark"] .btn-ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--fg-muted);
+}
+[data-theme="dark"] .btn-ghost:hover:not(:disabled) {
+  background: var(--bg-soft);
+  color: var(--fg);
+}
+[data-theme="dark"] .chip {
+  background: var(--bg-soft);
+  border-color: var(--border);
+  color: var(--fg-muted);
+}
+[data-theme="dark"] .stat {
+  background: var(--bg-elev);
+  border-color: var(--border);
+}
+[data-theme="dark"] .stat-value {
+  color: var(--fg);
+}
+[data-theme="dark"] .stat-label {
+  color: var(--fg-soft);
+}
+[data-theme="dark"] .stat-value-sm {
+  color: var(--fg-muted);
+}
+[data-theme="dark"] .section-title {
+  color: var(--fg);
+}
+[data-theme="dark"] .section-sub {
+  color: var(--fg-soft);
+}
+[data-theme="dark"] .label {
+  color: var(--fg-soft);
+}
+[data-theme="dark"] .code-block {
+  background: var(--bg-soft);
+  border-color: var(--border);
+  color: var(--fg);
+}
+[data-theme="dark"] .t-row,
+[data-theme="dark"] .t-header {
+  border-color: var(--border);
+}
+[data-theme="dark"] .t-row:hover {
+  background: var(--bg-soft);
+}
+[data-theme="dark"] .t-header {
+  background: var(--bg-soft);
+  color: var(--fg-soft);
+}
+[data-theme="dark"] .t-key {
+  color: var(--fg);
+}
+[data-theme="dark"] .t-preview {
+  color: var(--fg-muted);
+}
+/* Tailwind utility re-targets for the most common surfaces */
+[data-theme="dark"] .text-ink-900 { color: var(--fg) !important; }
+[data-theme="dark"] .text-ink-700 { color: var(--fg) !important; }
+[data-theme="dark"] .text-ink-500 { color: var(--fg-muted) !important; }
+[data-theme="dark"] .text-ink-400 { color: var(--fg-soft) !important; }
+[data-theme="dark"] .text-ink-300 { color: var(--fg-faint) !important; }
+[data-theme="dark"] .bg-canvas-50  { background: var(--bg) !important; }
+[data-theme="dark"] .bg-canvas-100 { background: var(--bg-soft) !important; }
+[data-theme="dark"] .bg-canvas-150 { background: var(--bg-softer) !important; }
+[data-theme="dark"] .border-canvas-150 { border-color: var(--border) !important; }
+[data-theme="dark"] .border-canvas-200 { border-color: var(--border) !important; }
+[data-theme="dark"] .border-canvas-300 { border-color: var(--border-strong) !important; }
+
+/* Scrollbar */
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border: 2px solid var(--bg);
+}
+
+/* Empty hero icon panel in dark */
+[data-theme="dark"] .empty-hero-icon {
+  background: linear-gradient(135deg, rgba(224, 122, 37, 0.12) 0%, var(--bg-soft) 100%);
+  border-color: var(--border);
 }
 
 /* Workspace ambient — a faint copper sheen sits high on the page so cards
@@ -35,7 +173,7 @@ main::before {
   pointer-events: none;
   background: radial-gradient(
     ellipse 60% 100% at 30% 0%,
-    rgba(224, 122, 37, 0.06) 0%,
+    var(--sheen) 0%,
     transparent 70%
   );
   z-index: 0;

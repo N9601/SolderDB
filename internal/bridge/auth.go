@@ -61,6 +61,17 @@ func (a *AuthService) Login(email, password string) (Session, error) {
 	return fromAuthSession(s), nil
 }
 
+func (a *AuthService) ChangePassword(userID, currentPassword, newPassword string) (User, error) {
+	if a.svc == nil {
+		return User{}, fmt.Errorf("auth not configured")
+	}
+	u, err := a.svc.ChangePassword(userID, currentPassword, newPassword)
+	if err != nil {
+		return User{}, err
+	}
+	return fromAuthUser(u), nil
+}
+
 func (a *AuthService) VerifyToken(token string) (User, error) {
 	if a.svc == nil {
 		return User{}, fmt.Errorf("auth not configured")

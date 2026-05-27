@@ -149,6 +149,33 @@ func (s *Service) Login(email, password string) (Session, error) {
 	return s.issueSession(recToUser(*rec))
 }
 
+// ChangePassword rehashes the user's password after verifying the current one.
+// Returns the updated user (without password hash). Existing tokens stay
+// valid — they're HMAC-signed independently from the stored hash.
+func (s *Service) ChangePassword(userID, currentPassword, newPassword string) (User, error) {
+	if len(newPassword) < 8 {
+		return User{}, errors.New("new password must be at least 8 characters")
+	}
+	rec, err := s.colls.GetRecord(UsersCollection, userID)
+	if err != nil {
+		return User{}, errors.New("user not found")
+	}
+	hash, _ := rec.Data["password_hash"].(string)
+	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(currentPassword)); err != nil {
+		return User{}, errors.New("current password incorrect")
+	}
+	newHash, err := bcrypt.GenerateFromPassword([]byte(newPassword), BcryptCost)
+	if err != nil {
+		return User{}, fmt.Errorf("hash password: %w", err)
+	}
+	if _, err := s.colls.UpdateRecord(UsersCollection, userID, map[string]interface{}{
+		"password_hash": string(newHash),
+	}); err != nil {
+		return User{}, err
+	}
+	return recToUser(rec), nil
+}
+
 // VerifyToken parses + validates a token and returns the user. Use this
 // from middleware before serving protected routes.
 func (s *Service) VerifyToken(token string) (User, error) {

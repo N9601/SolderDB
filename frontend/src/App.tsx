@@ -17,6 +17,7 @@ import FilesView from "./views/FilesView";
 import ApiExplorerView from "./views/ApiExplorerView";
 import LogsView from "./views/LogsView";
 import LifecycleView from "./views/LifecycleView";
+import ProfileView from "./views/ProfileView";
 import AuthView from "./views/AuthView";
 import { VerifyToken } from "./wailsjs/go/bridge/AuthService";
 import { GetStatus as GetHardwareStatus, GetThresholds, SetThresholds } from "./wailsjs/go/bridge/HardwareService";
@@ -38,7 +39,7 @@ type Row = {
 
 type ValueType = "json" | "number" | "text" | "empty";
 
-type NavId = "dashboard" | "lifecycle" | "collections" | "files" | "api" | "logs" | "console" | "browser" | "snapshots" | "settings";
+type NavId = "dashboard" | "lifecycle" | "collections" | "files" | "api" | "logs" | "console" | "browser" | "snapshots" | "settings" | "profile";
 
 const PAGE_SIZE = 50;
 const PREVIEW_BYTES = 80;
@@ -333,6 +334,13 @@ function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
       run: () => setNav(n.id)
     })),
     {
+      id: "nav-profile",
+      label: "Open profile",
+      hint: "account · password · theme",
+      group: "Navigation",
+      run: () => setNav("profile")
+    },
+    {
       id: "action-compact",
       label: "Compact SSTables",
       hint: "merge SSTables — admin",
@@ -575,26 +583,46 @@ function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
         <div className="border-t border-gunmetal-800">
           {!sidebarCollapsed ? (
             <div className="px-3 py-3">
-              <div className="mb-2 flex items-center gap-2 rounded-md bg-gunmetal-850 px-2.5 py-2">
-                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-copper-500 text-[11px] font-semibold text-white">
+              <button
+                onClick={() => setNav("profile")}
+                className={`mb-2 flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors ${
+                  nav === "profile"
+                    ? "bg-gunmetal-800 ring-1 ring-copper-600"
+                    : "bg-gunmetal-850 hover:bg-gunmetal-800"
+                }`}
+                title="Open profile"
+              >
+                <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-copper-500 text-[11px] font-semibold text-white">
                   {props.user.email.charAt(0).toUpperCase()}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[12px] font-medium text-white">{props.user.email}</div>
                   <div className="text-[10px] uppercase tracking-wider text-canvas-300">{props.user.role}</div>
                 </div>
-                <button
-                  className="text-canvas-300 hover:text-white"
-                  onClick={props.onSignOut}
+                <span
+                  className="flex-shrink-0 text-canvas-300 hover:text-white"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    props.onSignOut();
+                  }}
                   title="Sign out"
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      props.onSignOut();
+                    }
+                  }}
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                     <path d="M16 17l5-5-5-5" />
                     <path d="M21 12H9" />
                     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
                   </svg>
-                </button>
-              </div>
+                </span>
+              </button>
               <div className="flex items-center justify-between text-[10px] text-canvas-300">
                 <span className="font-mono">v0.3.0</span>
                 <span className="chip-mono inline-flex items-center gap-1.5 text-canvas-200">
@@ -615,12 +643,15 @@ function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
             </div>
           ) : (
             <div className="flex flex-col items-center gap-3 px-2 py-3">
-              <div
-                className="flex h-7 w-7 items-center justify-center rounded-full bg-copper-500 text-[11px] font-semibold text-white"
-                title={`${props.user.email} · ${props.user.role}`}
+              <button
+                onClick={() => setNav("profile")}
+                className={`flex h-7 w-7 items-center justify-center rounded-full bg-copper-500 text-[11px] font-semibold text-white transition-shadow ${
+                  nav === "profile" ? "ring-2 ring-copper-300 ring-offset-2 ring-offset-gunmetal-900" : "hover:shadow-copper-glow"
+                }`}
+                title={`${props.user.email} · ${props.user.role} — open profile`}
               >
                 {props.user.email.charAt(0).toUpperCase()}
-              </div>
+              </button>
               <button
                 onClick={() => setSidebar(false)}
                 className="text-canvas-300 transition-colors hover:text-white"
@@ -746,6 +777,7 @@ function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
           )}
           {nav === "snapshots" && <SnapshotsView dataDir={stats?.dataDir ?? ""} onSnapshot={() => void onSnapshot()} />}
           {nav === "settings" && <SettingsView stats={stats} apiAddr={apiAddr} />}
+          {nav === "profile" && <ProfileView user={props.user} onSignOut={props.onSignOut} />}
         </div>
       </main>
 

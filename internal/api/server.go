@@ -116,6 +116,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/auth/register", s.handleRegister)
 	s.mux.HandleFunc("/api/auth/login", s.handleLogin)
 	s.mux.HandleFunc("/api/auth/me", s.handleMe)
+	s.mux.HandleFunc("/api/auth/password", s.handleChangePassword)
 	s.mux.HandleFunc("/api/realtime", s.handleRealtime)
 	s.mux.HandleFunc("/api/files", s.handleFiles)
 	s.mux.HandleFunc("/api/files/", s.handleFileItem)
@@ -383,6 +384,36 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, sess)
+}
+
+func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, 405, "method not allowed")
+		return
+	}
+	user, ok := s.currentUser(r)
+	if !ok {
+		writeError(w, 401, "authentication required")
+		return
+	}
+	if s.auth == nil {
+		writeError(w, 500, "auth not configured")
+		return
+	}
+	var body struct {
+		Current string `json:"current"`
+		Next    string `json:"next"`
+	}
+	if err := decodeBody(r, &body); err != nil {
+		writeError(w, 400, err.Error())
+		return
+	}
+	u, err := s.auth.ChangePassword(user.ID, body.Current, body.Next)
+	if err != nil {
+		writeError(w, 400, err.Error())
+		return
+	}
+	writeJSON(w, 200, u)
 }
 
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
