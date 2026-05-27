@@ -185,9 +185,15 @@ func Open(opts Options) (*DB, error) {
 		return nil, fmt.Errorf("create sstable dir: %w", err)
 	}
 
-	f, err := os.OpenFile(walPath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o600)
+	// Note: do not use O_APPEND on Windows if you need to Truncate() during WAL reset.
+	// We maintain the file offset ourselves under db.mu.
+	f, err := os.OpenFile(walPath, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("open wal: %w", err)
+	}
+	if _, err := f.Seek(0, io.SeekEnd); err != nil {
+		_ = f.Close()
+		return nil, fmt.Errorf("seek wal end: %w", err)
 	}
 
 	db := &DB{
