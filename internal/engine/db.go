@@ -17,6 +17,74 @@ import (
 
 var crcTable = crc32.MakeTable(crc32.Castagnoli)
 
+// ---------------- Bloom filter ----------------
+// Simple bit-array Bloom filter with double-hashing using FNV-1a 64.
+// Sized for ~1% false-positive rate: m = ceil(10 * n), k = 7.
+
+type bloomFilter struct {
+	m    uint32 // number of bits (rounded up to byte boundary)
+	k    uint32 // number of hash functions
+	bits []byte
+}
+
+func newBloomForN(n int) *bloomFilter {
+	if n < 1 {
+		n = 1
+	}
+	bits := uint32(n * 10)
+	if bits < 64 {
+		bits = 64
+	}
+	if bits%8 != 0 {
+		bits += 8 - (bits % 8)
+	}
+	return &bloomFilter{m: bits, k: 7, bits: make([]byte, bits/8)}
+}
+
+func bloomHashes(key string) (uint64, uint64) {
+	const (
+		fnvOffset uint64 = 14695981039346656037
+		fnvPrime  uint64 = 1099511628211
+	)
+	h1 := fnvOffset
+	for i := 0; i < len(key); i++ {
+		h1 ^= uint64(key[i])
+		h1 *= fnvPrime
+	}
+	// Second hash from a different seed (perturbed offset).
+	h2 := fnvOffset ^ 0x9e3779b97f4a7c15
+	for i := 0; i < len(key); i++ {
+		h2 ^= uint64(key[i])
+		h2 *= fnvPrime
+	}
+	return h1, h2
+}
+
+func (b *bloomFilter) add(key string) {
+	if b == nil || b.m == 0 {
+		return
+	}
+	h1, h2 := bloomHashes(key)
+	for i := uint32(0); i < b.k; i++ {
+		pos := uint32((h1 + uint64(i)*h2) % uint64(b.m))
+		b.bits[pos/8] |= 1 << (pos % 8)
+	}
+}
+
+func (b *bloomFilter) mayContain(key string) bool {
+	if b == nil || b.m == 0 {
+		return true // no filter = assume possible
+	}
+	h1, h2 := bloomHashes(key)
+	for i := uint32(0); i < b.k; i++ {
+		pos := uint32((h1 + uint64(i)*h2) % uint64(b.m))
+		if b.bits[pos/8]&(1<<(pos%8)) == 0 {
+			return false
+		}
+	}
+	return true
+}
+
 type opCode byte
 
 const (
@@ -598,6 +666,7 @@ type sstable struct {
 	// Sorted keys and offsets into the data section.
 	keys    []string
 	offsets []uint64
+	bloom   *bloomFilter
 }
 
 func (t *sstable) close() error {
@@ -616,9 +685,10 @@ type sstRecord struct {
 }
 
 const (
-	sstMagic      = "SDBSST01"
-	sstFooterMagic = "SDBEND01"
-	sstVersion    = uint32(1)
+	sstMagic       = "SDBSST02"
+	sstFooterMagic = "SDBEND02"
+	sstVersion     = uint32(2)
+	sstFooterSize  = 8 + 8 + 8 // indexOffset + bloomOffset + footerMagic
 )
 
 func (db *DB) loadSSTables() error {
@@ -661,7 +731,7 @@ func openSSTable(path string) (*sstable, error) {
 		_ = f.Close()
 		return nil, fmt.Errorf("stat sstable: %w", err)
 	}
-	if fi.Size() < int64(len(sstMagic)+4+4+8+len(sstFooterMagic)) {
+	if fi.Size() < int64(len(sstMagic)+4+4+sstFooterSize) {
 		_ = f.Close()
 		return nil, fmt.Errorf("sstable too small: %s", path)
 	}
@@ -682,20 +752,47 @@ func openSSTable(path string) (*sstable, error) {
 	}
 	count := binary.LittleEndian.Uint32(header[12:16])
 
-	// Read footer: [indexOffset u64][footerMagic 8]
-	if _, err := f.Seek(fi.Size()-int64(8+8), io.SeekStart); err != nil {
+	// Read footer: [indexOffset u64][bloomOffset u64][footerMagic 8]
+	if _, err := f.Seek(fi.Size()-int64(sstFooterSize), io.SeekStart); err != nil {
 		_ = f.Close()
 		return nil, fmt.Errorf("seek footer: %w", err)
 	}
-	var footer [16]byte
+	var footer [sstFooterSize]byte
 	if _, err := io.ReadFull(f, footer[:]); err != nil {
 		_ = f.Close()
 		return nil, fmt.Errorf("read footer: %w", err)
 	}
 	indexOffset := binary.LittleEndian.Uint64(footer[0:8])
-	if string(footer[8:16]) != sstFooterMagic {
+	bloomOffset := binary.LittleEndian.Uint64(footer[8:16])
+	if string(footer[16:24]) != sstFooterMagic {
 		_ = f.Close()
 		return nil, fmt.Errorf("sstable bad footer magic: %s", path)
+	}
+
+	// Read bloom: [m u32][k u32][bits...]
+	var bloom *bloomFilter
+	if bloomOffset > 0 {
+		if _, err := f.Seek(int64(bloomOffset), io.SeekStart); err != nil {
+			_ = f.Close()
+			return nil, fmt.Errorf("seek bloom: %w", err)
+		}
+		var bhdr [8]byte
+		if _, err := io.ReadFull(f, bhdr[:]); err != nil {
+			_ = f.Close()
+			return nil, fmt.Errorf("read bloom header: %w", err)
+		}
+		m := binary.LittleEndian.Uint32(bhdr[0:4])
+		k := binary.LittleEndian.Uint32(bhdr[4:8])
+		if m == 0 || m > 1<<30 || m%8 != 0 {
+			_ = f.Close()
+			return nil, fmt.Errorf("sstable invalid bloom params: %s", path)
+		}
+		bits := make([]byte, m/8)
+		if _, err := io.ReadFull(f, bits); err != nil {
+			_ = f.Close()
+			return nil, fmt.Errorf("read bloom bits: %w", err)
+		}
+		bloom = &bloomFilter{m: m, k: k, bits: bits}
 	}
 
 	// Read index
@@ -732,7 +829,7 @@ func openSSTable(path string) (*sstable, error) {
 		offsets = append(offsets, binary.LittleEndian.Uint64(offBuf[:]))
 	}
 
-	return &sstable{path: path, f: f, keys: keys, offsets: offsets}, nil
+	return &sstable{path: path, f: f, keys: keys, offsets: offsets, bloom: bloom}, nil
 }
 
 func (t *sstable) readAll() ([]sstRecord, error) {
@@ -741,17 +838,22 @@ func (t *sstable) readAll() ([]sstRecord, error) {
 		return nil, fmt.Errorf("stat sstable: %w", err)
 	}
 
-	// Read footer to learn indexOffset.
-	if _, err := t.f.Seek(fi.Size()-int64(8+8), io.SeekStart); err != nil {
+	// Read footer to learn data section end (= bloomOffset if present, else indexOffset).
+	if _, err := t.f.Seek(fi.Size()-int64(sstFooterSize), io.SeekStart); err != nil {
 		return nil, fmt.Errorf("seek footer: %w", err)
 	}
-	var footer [16]byte
+	var footer [sstFooterSize]byte
 	if _, err := io.ReadFull(t.f, footer[:]); err != nil {
 		return nil, fmt.Errorf("read footer: %w", err)
 	}
 	indexOffset := binary.LittleEndian.Uint64(footer[0:8])
-	if string(footer[8:16]) != sstFooterMagic {
+	bloomOffset := binary.LittleEndian.Uint64(footer[8:16])
+	if string(footer[16:24]) != sstFooterMagic {
 		return nil, fmt.Errorf("sstable bad footer magic: %s", t.path)
+	}
+	dataEnd := indexOffset
+	if bloomOffset > 0 && bloomOffset < dataEnd {
+		dataEnd = bloomOffset
 	}
 
 	// Seek to start of data section (after header).
@@ -764,7 +866,7 @@ func (t *sstable) readAll() ([]sstRecord, error) {
 	var out []sstRecord
 	bytesRead := uint64(dataStart)
 
-	for bytesRead < indexOffset {
+	for bytesRead < dataEnd {
 		tomb, err := r.ReadByte()
 		if err != nil {
 			return nil, fmt.Errorf("read record tomb: %w", err)
@@ -829,6 +931,9 @@ func (db *DB) getFromSSTables(key string) (string, bool) {
 }
 
 func (t *sstable) get(key string) (value string, ok bool, deleted bool, err error) {
+	if !t.bloom.mayContain(key) {
+		return "", false, false, nil
+	}
 	i := sort.SearchStrings(t.keys, key)
 	if i >= len(t.keys) || t.keys[i] != key {
 		return "", false, false, nil
@@ -984,10 +1089,15 @@ func writeSSTable(path string, records []sstRecord) error {
 	}
 	index := make([]idx, 0, len(records))
 
+	// Build bloom filter from live (non-tombstoned) keys + all keys; including
+	// tombstoned ones is fine — mayContain just permits seeks for them too.
+	bloom := newBloomForN(len(records))
+
 	// Data section offsets are from file start.
 	offset := uint64(len(sstMagic) + 4 + 4)
 	for _, r := range records {
 		index = append(index, idx{key: r.key, offset: offset})
+		bloom.add(r.key)
 
 		tomb := byte(0)
 		valB := []byte(r.value)
@@ -1017,6 +1127,19 @@ func writeSSTable(path string, records []sstRecord) error {
 		offset += uint64(len(recHdr)) + uint64(len(keyB)) + uint64(len(valB))
 	}
 
+	// Bloom section: [m u32][k u32][bits...]
+	bloomOffset := offset
+	var bHdr [8]byte
+	binary.LittleEndian.PutUint32(bHdr[0:4], bloom.m)
+	binary.LittleEndian.PutUint32(bHdr[4:8], bloom.k)
+	if _, err := w.Write(bHdr[:]); err != nil {
+		return fmt.Errorf("sstable bloom header: %w", err)
+	}
+	if _, err := w.Write(bloom.bits); err != nil {
+		return fmt.Errorf("sstable bloom bits: %w", err)
+	}
+	offset += uint64(len(bHdr)) + uint64(len(bloom.bits))
+
 	indexOffset := offset
 	for _, it := range index {
 		kb := []byte(it.key)
@@ -1036,11 +1159,15 @@ func writeSSTable(path string, records []sstRecord) error {
 		offset += uint64(len(kl)) + uint64(len(kb)) + uint64(len(off))
 	}
 
-	// Footer: indexOffset + footer magic
+	// Footer: [indexOffset u64][bloomOffset u64][footerMagic 8]
 	var off [8]byte
 	binary.LittleEndian.PutUint64(off[:], indexOffset)
 	if _, err := w.Write(off[:]); err != nil {
-		return fmt.Errorf("sstable footer offset: %w", err)
+		return fmt.Errorf("sstable footer index offset: %w", err)
+	}
+	binary.LittleEndian.PutUint64(off[:], bloomOffset)
+	if _, err := w.Write(off[:]); err != nil {
+		return fmt.Errorf("sstable footer bloom offset: %w", err)
 	}
 	if _, err := w.Write([]byte(sstFooterMagic)); err != nil {
 		return fmt.Errorf("sstable footer magic: %w", err)
