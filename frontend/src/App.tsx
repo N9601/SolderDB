@@ -5,7 +5,8 @@ import {
   Get,
   GetStats,
   Scan,
-  Set as SetKV
+  Set as SetKV,
+  Snapshot
 } from "./wailsjs/go/bridge/DBService";
 import { bridge } from "./wailsjs/go/models";
 
@@ -35,6 +36,30 @@ function formatBytes(bytes: number): string {
 function truncate(s: string, n: number): string {
   if (s.length <= n) return s;
   return s.slice(0, n) + "…";
+}
+
+function tryFormatJSON(s: string): { formatted: string; ok: boolean } {
+  if (!s.trim()) return { formatted: s, ok: false };
+  try {
+    const parsed = JSON.parse(s) as unknown;
+    return { formatted: JSON.stringify(parsed, null, 2), ok: true };
+  } catch {
+    return { formatted: s, ok: false };
+  }
+}
+
+function isJSONLike(s: string): boolean {
+  const t = s.trim();
+  if (t.length < 2) return false;
+  const first = t[0];
+  const last = t[t.length - 1];
+  if (!((first === "{" && last === "}") || (first === "[" && last === "]"))) return false;
+  try {
+    JSON.parse(t);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export default function App() {
@@ -163,6 +188,26 @@ export default function App() {
     }
   }
 
+  async function onSnapshot() {
+    try {
+      setStatus("SNAPSHOTTING…");
+      const path = await Snapshot();
+      setStatus(`SNAPSHOT → ${path}`);
+    } catch (e) {
+      setStatus(`SNAPSHOT ERR: ${String(e)}`);
+    }
+  }
+
+  function onFormatValue() {
+    const { formatted, ok } = tryFormatJSON(value);
+    if (ok) {
+      setValue(formatted);
+      setStatus("JSON FORMATTED");
+    } else {
+      setStatus("NOT VALID JSON");
+    }
+  }
+
   function selectRow(k: string) {
     setSelectedKey(k);
     setKey(k);
@@ -199,6 +244,9 @@ export default function App() {
               <button className="btn" onClick={() => void onCompact()}>
                 ⚙ Compact SSTables
               </button>
+              <button className="btn" onClick={() => void onSnapshot()}>
+                ⎘ Snapshot
+              </button>
               <button className="btn" onClick={() => void refreshStats()}>
                 ↻ Refresh
               </button>
@@ -221,7 +269,14 @@ export default function App() {
                 />
               </div>
               <div>
-                <label className="label">Value</label>
+                <div className="flex items-center justify-between">
+                  <label className="label">Value</label>
+                  {isJSONLike(value) && (
+                    <span className="chip">
+                      <span className="led" /> JSON
+                    </span>
+                  )}
+                </div>
                 <textarea
                   value={value}
                   onChange={(e) => setValue(e.target.value)}
@@ -230,6 +285,11 @@ export default function App() {
                   rows={5}
                   spellCheck={false}
                 />
+                <div className="mt-1 flex justify-end">
+                  <button className="btn" onClick={onFormatValue}>
+                    {"{ }"} Format JSON
+                  </button>
+                </div>
               </div>
               <div className="flex flex-wrap gap-2">
                 <button className="btn btn-primary" onClick={() => void onSet()}>
@@ -243,9 +303,16 @@ export default function App() {
                 </button>
               </div>
               <div>
-                <label className="label">Read Result</label>
+                <div className="flex items-center justify-between">
+                  <label className="label">Read Result</label>
+                  {isJSONLike(readValue) && (
+                    <span className="chip">
+                      <span className="led" /> JSON
+                    </span>
+                  )}
+                </div>
                 <pre className="field mt-1 max-h-40 overflow-auto whitespace-pre-wrap">
-                  {readValue || "—"}
+                  {readValue ? (isJSONLike(readValue) ? tryFormatJSON(readValue).formatted : readValue) : "—"}
                 </pre>
               </div>
             </div>

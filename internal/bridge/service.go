@@ -114,6 +114,13 @@ func (s *DBService) Compact() error {
 	return s.db.Compact()
 }
 
+func (s *DBService) Snapshot() (string, error) {
+	if s.db == nil {
+		return "", fmt.Errorf("db not initialized")
+	}
+	return s.db.Snapshot()
+}
+
 func (s *DBService) Scan(opts ScanOptions) (ScanResult, error) {
 	if s.db == nil {
 		return ScanResult{}, fmt.Errorf("db not initialized")

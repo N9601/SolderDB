@@ -439,6 +439,73 @@ func (db *DB) Delete(key string) error {
 	return nil
 }
 
+// Snapshot copies the WAL and all SSTables to a new timestamped folder under
+// <dataDir>/snapshots/. Returns the absolute destination path.
+//
+// The lock is held for the duration of the copy so the snapshot is internally
+// consistent: no flush or compaction can run while files are being copied.
+func (db *DB) Snapshot() (string, error) {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
+	if db.walW != nil {
+		if err := db.walW.Flush(); err != nil {
+			return "", fmt.Errorf("snapshot flush wal: %w", err)
+		}
+	}
+	if db.walFile != nil {
+		if err := db.walFile.Sync(); err != nil {
+			return "", fmt.Errorf("snapshot sync wal: %w", err)
+		}
+	}
+
+	ts := time.Now().UTC().Format("20060102-150405.000000000")
+	dst := filepath.Join(db.dataDir, "snapshots", ts)
+	if err := os.MkdirAll(dst, 0o755); err != nil {
+		return "", fmt.Errorf("snapshot mkdir: %w", err)
+	}
+
+	if db.walPath != "" {
+		if err := copyFile(db.walPath, filepath.Join(dst, "wal.bin")); err != nil {
+			return "", fmt.Errorf("snapshot wal: %w", err)
+		}
+	}
+
+	sstDst := filepath.Join(dst, "sstables")
+	if err := os.MkdirAll(sstDst, 0o755); err != nil {
+		return "", fmt.Errorf("snapshot sstables dir: %w", err)
+	}
+	for _, t := range db.sstables {
+		name := filepath.Base(t.path)
+		if err := copyFile(t.path, filepath.Join(sstDst, name)); err != nil {
+			return "", fmt.Errorf("snapshot sst %s: %w", name, err)
+		}
+	}
+	return dst, nil
+}
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = in.Close() }()
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		_ = out.Close()
+		_ = os.Remove(dst)
+		return err
+	}
+	if err := out.Sync(); err != nil {
+		_ = out.Close()
+		return err
+	}
+	return out.Close()
+}
+
 // Compact merges all current SSTables into a single new SSTable (newest-wins).
 // This reduces the number of files and improves read performance.
 func (db *DB) Compact() error {

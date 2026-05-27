@@ -164,6 +164,41 @@ func TestCompactionReducesSSTableCount(t *testing.T) {
 	}
 }
 
+func TestSnapshotCopiesWALAndSSTables(t *testing.T) {
+	dir := t.TempDir()
+	db, err := Open(Options{DataDir: dir, FlushThresholdBytes: 64})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	// Write enough to create at least one SSTable and leave some WAL.
+	for i := 0; i < 3; i++ {
+		if err := db.Set("k"+strconv.Itoa(i), strings.Repeat("v", 200)); err != nil {
+			t.Fatalf("set: %v", err)
+		}
+	}
+	if err := db.Set("tail", "small"); err != nil {
+		t.Fatalf("set tail: %v", err)
+	}
+
+	path, err := db.Snapshot()
+	if err != nil {
+		t.Fatalf("snapshot: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(path, "wal.bin")); err != nil {
+		t.Fatalf("snapshot wal missing: %v", err)
+	}
+	ents, err := os.ReadDir(filepath.Join(path, "sstables"))
+	if err != nil {
+		t.Fatalf("snapshot sstables: %v", err)
+	}
+	if len(ents) == 0 {
+		t.Fatalf("expected snapshot to contain sstables")
+	}
+}
+
 func TestWALCorruptedTailIsIgnored(t *testing.T) {
 	dir := t.TempDir()
 	db, err := Open(Options{DataDir: dir})
