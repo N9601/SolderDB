@@ -42,11 +42,12 @@ func main() {
 		log.Fatal(err)
 	}
 	app.svc = svc
+	colls := bridge.NewCollectionsService(svc.Engine())
 
 	if err := wails.Run(&options.App{
 		Title:  "SolderDB",
-		Width:  1100,
-		Height: 750,
+		Width:  1280,
+		Height: 820,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
@@ -54,8 +55,8 @@ func main() {
 		OnShutdown: app.shutdown,
 		Bind: []interface{}{
 			app,
-			// Expose DB service directly for the frontend bindings.
 			app.svc,
+			colls,
 		},
 	}); err != nil {
 		log.Fatal(err)

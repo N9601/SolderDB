@@ -45,6 +45,12 @@ func NewDBService(dataDir string) (*DBService, error) {
 	return &DBService{db: db}, nil
 }
 
+// Engine returns the underlying *engine.DB. Used by main to construct sibling
+// services (collections, etc.) that share the same data store.
+func (s *DBService) Engine() *engine.DB {
+	return s.db
+}
+
 func (s *DBService) Close() error {
 	if s.db == nil {
 		return nil
