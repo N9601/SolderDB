@@ -406,9 +406,6 @@ func (db *DB) Compact() error {
 
 	db.mu.Lock()
 	oldTables := append([]*sstable(nil), db.sstables...)
-	for _, t := range db.sstables {
-		// no-op
-	}
 	db.sstables = []*sstable{newTable}
 	db.mu.Unlock()
 
