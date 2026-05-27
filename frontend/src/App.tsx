@@ -77,12 +77,14 @@ export default function App() {
         after: scanAfter,
         limit: PAGE_SIZE
       } as bridge.ScanOptions);
-      setScanNextAfter(res.nextAfter);
-      const initial: Row[] = res.keys.map((k) => ({ key: k, preview: "", loading: true }));
+      const keys = res.keys ?? [];
+      setScanNextAfter(res.nextAfter ?? "");
+      const initial: Row[] = keys.map((k) => ({ key: k, preview: "", loading: true }));
       setRows(initial);
       // Fetch previews in parallel but bounded.
-      const previews = await Promise.all(res.keys.map((k) => Get(k).catch(() => "")));
-      setRows(res.keys.map((k, i) => ({ key: k, preview: truncate(previews[i] ?? "", PREVIEW_BYTES), loading: false })));
+      const previews = await Promise.all(keys.map((k) => Get(k).catch(() => "")));
+      setRows(keys.map((k, i) => ({ key: k, preview: truncate(previews[i] ?? "", PREVIEW_BYTES), loading: false })));
+      setStatus("READY");
     } catch (e) {
       setStatus(`SCAN ERR: ${String(e)}`);
     }

@@ -155,7 +155,7 @@ func (db *DB) Scan(opts ScanOptions) (ScanResult, error) {
 	}
 
 	if start >= len(all) {
-		return ScanResult{Keys: nil, NextAfter: ""}, nil
+		return ScanResult{Keys: []string{}, NextAfter: ""}, nil
 	}
 
 	end := start + opts.Limit
