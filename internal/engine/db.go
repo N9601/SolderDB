@@ -136,14 +136,18 @@ type DB struct {
 }
 
 type Stats struct {
-	DataDir        string
-	WALPath        string
-	WALBytes       int64
-	Keys           int
-	Tombstones     int
-	LiveKeys       int
-	MemtableBytes  int64
-	SSTableCount   int
+	DataDir       string
+	WALPath       string
+	WALBytes      int64
+	Keys          int
+	Tombstones    int
+	LiveKeys      int
+	MemtableBytes int64
+	SSTableCount  int
+	// SSTableSizes are the byte sizes of each SSTable in oldest-first order.
+	// Used by the visualizer to draw individual blocks.
+	SSTableSizes        []int64
+	FlushThresholdBytes int64
 }
 
 type Options struct {
@@ -395,6 +399,17 @@ func (db *DB) Stats() (Stats, error) {
 	s.LiveKeys = live
 	s.MemtableBytes = approxBytes
 	s.SSTableCount = len(db.sstables)
+	s.FlushThresholdBytes = db.flushThresholdBytes
+	s.SSTableSizes = make([]int64, 0, len(db.sstables))
+	for _, t := range db.sstables {
+		if t.f != nil {
+			if fi, err := t.f.Stat(); err == nil {
+				s.SSTableSizes = append(s.SSTableSizes, fi.Size())
+				continue
+			}
+		}
+		s.SSTableSizes = append(s.SSTableSizes, 0)
+	}
 
 	if db.walFile != nil {
 		fi, err := db.walFile.Stat()

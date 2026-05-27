@@ -16,6 +16,7 @@ import CollectionsView from "./views/CollectionsView";
 import FilesView from "./views/FilesView";
 import ApiExplorerView from "./views/ApiExplorerView";
 import LogsView from "./views/LogsView";
+import LifecycleView from "./views/LifecycleView";
 import AuthView from "./views/AuthView";
 import { VerifyToken } from "./wailsjs/go/bridge/AuthService";
 import { GetStatus as GetHardwareStatus, GetThresholds, SetThresholds } from "./wailsjs/go/bridge/HardwareService";
@@ -33,7 +34,7 @@ type Row = {
 
 type ValueType = "json" | "number" | "text" | "empty";
 
-type NavId = "dashboard" | "collections" | "files" | "api" | "logs" | "console" | "browser" | "snapshots" | "settings";
+type NavId = "dashboard" | "lifecycle" | "collections" | "files" | "api" | "logs" | "console" | "browser" | "snapshots" | "settings";
 
 const PAGE_SIZE = 50;
 const PREVIEW_BYTES = 80;
@@ -93,6 +94,17 @@ const NAV: { id: NavId; label: string; icon: JSX.Element }[] = [
         <rect x="14" y="3" width="7" height="5" rx="1.5" />
         <rect x="14" y="12" width="7" height="9" rx="1.5" />
         <rect x="3" y="16" width="7" height="5" rx="1.5" />
+      </svg>
+    )
+  },
+  {
+    id: "lifecycle",
+    label: "Lifecycle",
+    icon: (
+      <svg className="nav-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+        <path d="M21 12a9 9 0 1 1-3-6.7" />
+        <path d="M21 4v5h-5" />
+        <circle cx="12" cy="12" r="2" fill="currentColor" />
       </svg>
     )
   },
@@ -529,6 +541,7 @@ function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
           {nav === "dashboard" && (
             <DashboardView stats={stats} writePulse={writePulse} hw={hw} />
           )}
+          {nav === "lifecycle" && <LifecycleView />}
           {nav === "collections" && <CollectionsView onStatus={setStatus} />}
           {nav === "files" && <FilesView onStatus={setStatus} />}
           {nav === "api" && <ApiExplorerView />}

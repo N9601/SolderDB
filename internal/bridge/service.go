@@ -22,14 +22,16 @@ func (s *DBService) GetAPIAddr() string {
 }
 
 type Stats struct {
-	DataDir       string `json:"dataDir"`
-	WALPath       string `json:"walPath"`
-	WALBytes      int64  `json:"walBytes"`
-	Keys          int    `json:"keys"`
-	LiveKeys      int    `json:"liveKeys"`
-	Tombstones    int    `json:"tombstones"`
-	MemtableBytes int64  `json:"memtableBytes"`
-	SSTableCount  int    `json:"ssTableCount"`
+	DataDir             string  `json:"dataDir"`
+	WALPath             string  `json:"walPath"`
+	WALBytes            int64   `json:"walBytes"`
+	Keys                int     `json:"keys"`
+	LiveKeys            int     `json:"liveKeys"`
+	Tombstones          int     `json:"tombstones"`
+	MemtableBytes       int64   `json:"memtableBytes"`
+	SSTableCount        int     `json:"ssTableCount"`
+	SSTableSizes        []int64 `json:"ssTableSizes"`
+	FlushThresholdBytes int64   `json:"flushThresholdBytes"`
 }
 
 type ListKeysOptions struct {
@@ -105,14 +107,16 @@ func (s *DBService) GetStats() (Stats, error) {
 		return Stats{}, err
 	}
 	return Stats{
-		DataDir:       st.DataDir,
-		WALPath:       st.WALPath,
-		WALBytes:      st.WALBytes,
-		Keys:          st.Keys,
-		LiveKeys:      st.LiveKeys,
-		Tombstones:    st.Tombstones,
-		MemtableBytes: st.MemtableBytes,
-		SSTableCount:  st.SSTableCount,
+		DataDir:             st.DataDir,
+		WALPath:             st.WALPath,
+		WALBytes:            st.WALBytes,
+		Keys:                st.Keys,
+		LiveKeys:            st.LiveKeys,
+		Tombstones:          st.Tombstones,
+		MemtableBytes:       st.MemtableBytes,
+		SSTableCount:        st.SSTableCount,
+		SSTableSizes:        st.SSTableSizes,
+		FlushThresholdBytes: st.FlushThresholdBytes,
 	}, nil
 }
 
