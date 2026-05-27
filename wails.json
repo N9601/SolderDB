@@ -4,9 +4,10 @@
   "outputfilename": "SolderDB",
   "frontend:install": "npm install",
   "frontend:build": "npm run build",
-  "frontend:dev": "npm run dev",
-  "frontend:dir": "frontend",
-  "wailsjsdir": "frontend/src/wailsjs",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "http://localhost:34115",
+  "frontend:dir": "./frontend",
+  "wailsjsdir": "./frontend/src",
   "author": {
     "name": "",
     "email": ""
@@ -18,4 +19,3 @@
     "copyright": ""
   }
 }
-
