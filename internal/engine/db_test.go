@@ -1,10 +1,12 @@
 package engine
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -159,5 +161,60 @@ func TestCompactionReducesSSTableCount(t *testing.T) {
 	}
 	if st2.SSTableCount != 1 {
 		t.Fatalf("expected 1 sstable after compaction, got %d", st2.SSTableCount)
+	}
+}
+
+// Run with `go test -race ./...` once cgo is available to catch any
+// concurrency bugs. Without -race this still exercises every lock path
+// and surfaces deadlocks or panics under load.
+func TestConcurrentReadWriteDelete(t *testing.T) {
+	dir := t.TempDir()
+	db, err := Open(Options{DataDir: dir, FlushThresholdBytes: 4 * 1024})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	const writers = 8
+	const readers = 8
+	const opsPerGoroutine = 500
+
+	var wg sync.WaitGroup
+	wg.Add(writers + readers)
+
+	for w := 0; w < writers; w++ {
+		go func(id int) {
+			defer wg.Done()
+			for i := 0; i < opsPerGoroutine; i++ {
+				k := fmt.Sprintf("w%d:k%d", id, i%50)
+				if i%5 == 4 {
+					_ = db.Delete(k)
+					continue
+				}
+				if err := db.Set(k, strings.Repeat("v", 32)); err != nil {
+					t.Errorf("set: %v", err)
+					return
+				}
+			}
+		}(w)
+	}
+
+	for r := 0; r < readers; r++ {
+		go func(id int) {
+			defer wg.Done()
+			for i := 0; i < opsPerGoroutine; i++ {
+				k := fmt.Sprintf("w%d:k%d", id%writers, i%50)
+				_, _ = db.Get(k)
+				if i%50 == 0 {
+					_, _ = db.ListKeys(ListKeysOptions{Limit: 20})
+				}
+			}
+		}(r)
+	}
+
+	wg.Wait()
+
+	if _, err := db.Stats(); err != nil {
+		t.Fatalf("stats after concurrent ops: %v", err)
 	}
 }
