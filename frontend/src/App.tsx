@@ -22,6 +22,9 @@ import { VerifyToken } from "./wailsjs/go/bridge/AuthService";
 import { GetStatus as GetHardwareStatus, GetThresholds, SetThresholds } from "./wailsjs/go/bridge/HardwareService";
 import type { bridge as bridgeNS } from "./wailsjs/go/models";
 import { getToken, setToken } from "./lib/apiFetch";
+import { ToastProvider, useStatusToast, useToast } from "./components/Toast";
+import { CommandPalette, type CommandItem } from "./components/CommandPalette";
+import { CountUp } from "./components/CountUp";
 
 type DBStats = bridge.Stats;
 
@@ -251,6 +254,8 @@ export default function App() {
 
 function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
   const [nav, setNav] = useState<NavId>("dashboard");
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const toast = useToast();
 
   const [key, setKey] = useState<string>("");
   const [value, setValue] = useState<string>("");
@@ -269,6 +274,48 @@ function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
   const [writePulse, setWritePulse] = useState<boolean>(false);
   const [apiAddr, setApiAddr] = useState<string>("");
   const [hw, setHw] = useState<bridgeNS.HardwareStatus | null>(null);
+
+  useStatusToast(status);
+
+  const commands: CommandItem[] = [
+    ...NAV.map((n, i) => ({
+      id: "nav-" + n.id,
+      label: "Go to " + n.label,
+      group: "Navigation",
+      shortcut: i < 9 ? `G ${i + 1}` : undefined,
+      run: () => setNav(n.id)
+    })),
+    {
+      id: "action-compact",
+      label: "Compact SSTables",
+      hint: "merge SSTables — admin",
+      group: "Actions",
+      run: () => void onCompact()
+    },
+    {
+      id: "action-snapshot",
+      label: "Create snapshot",
+      hint: "WAL + every SSTable copied to disk",
+      group: "Actions",
+      run: () => void onSnapshot()
+    },
+    {
+      id: "action-refresh",
+      label: "Refresh stats",
+      group: "Actions",
+      run: () => void refreshStats()
+    },
+    {
+      id: "action-signout",
+      label: "Sign out",
+      hint: props.user.email,
+      group: "Account",
+      run: () => {
+        toast.push("Signed out", "info");
+        props.onSignOut();
+      }
+    }
+  ];
   const ledTimer = useRef<number | null>(null);
 
   function pulseWrite() {
@@ -498,7 +545,6 @@ function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
             <h1 className="text-[15px] font-semibold text-ink-900">
               {NAV.find((n) => n.id === nav)?.label}
             </h1>
-            <span className="chip">{status}</span>
             {apiAddr && (
               <a
                 href={apiAddr + "/api/health"}
@@ -520,6 +566,20 @@ function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
             )}
           </div>
           <div className="flex items-center gap-2">
+            <button
+              className="hidden items-center gap-2 rounded-md border border-canvas-200 bg-canvas-50 px-3 py-1.5 text-[12px] text-ink-400 transition-colors hover:bg-canvas-100 sm:inline-flex"
+              onClick={() => setPaletteOpen(true)}
+              title="Command palette"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <circle cx="11" cy="11" r="7" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <span>Search</span>
+              <kbd className="rounded border border-canvas-300 bg-white px-1 py-0.5 font-mono text-[9.5px] text-ink-500">
+                {navigator.platform.toUpperCase().includes("MAC") ? "⌘" : "Ctrl"} K
+              </kbd>
+            </button>
             <button className="btn-ghost btn" onClick={() => void refreshStats()}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                 <path d="M21 12a9 9 0 1 1-3-6.7" />
@@ -590,6 +650,8 @@ function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
           {nav === "settings" && <SettingsView stats={stats} apiAddr={apiAddr} />}
         </div>
       </main>
+
+      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} items={commands} />
     </div>
   );
 }
@@ -601,12 +663,12 @@ function DashboardView(props: { stats: DBStats | null; writePulse: boolean; hw: 
   return (
     <div className="animate-slideUp space-y-6">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="Live Keys" value={stats ? String(stats.liveKeys) : "—"} accent={writePulse} />
-        <Stat label="Tombstones" value={stats ? String(stats.tombstones) : "—"} />
-        <Stat label="Memtable" value={stats ? formatBytes(stats.memtableBytes) : "—"} />
-        <Stat label="WAL" value={stats ? formatBytes(stats.walBytes) : "—"} />
-        <Stat label="SSTables" value={stats ? String(stats.ssTableCount) : "—"} />
-        <Stat label="Total Keys" value={stats ? String(stats.keys) : "—"} />
+        <NumStat label="Live Keys" value={stats?.liveKeys ?? 0} accent={writePulse} />
+        <NumStat label="Tombstones" value={stats?.tombstones ?? 0} />
+        <ByteStat label="Memtable" value={stats?.memtableBytes ?? 0} />
+        <ByteStat label="WAL" value={stats?.walBytes ?? 0} />
+        <NumStat label="SSTables" value={stats?.ssTableCount ?? 0} />
+        <NumStat label="Total Keys" value={stats?.keys ?? 0} />
         <StatMono label="Data Dir" value={stats?.dataDir ?? "—"} />
         <StatMono label="WAL Path" value={stats?.walPath ?? "—"} />
       </div>
@@ -1097,11 +1159,24 @@ curl -X POST ${props.apiAddr}/api/collections/notes/records \\
 
 /* ---------------------- Small components ---------------------- */
 
-function Stat(props: { label: string; value: string; accent?: boolean }) {
+function NumStat(props: { label: string; value: number; accent?: boolean }) {
   return (
     <div className={`stat ${props.accent ? "animate-pulseCopper" : ""}`}>
       <div className="stat-label">{props.label}</div>
-      <div className="stat-value">{props.value}</div>
+      <div className="stat-value">
+        <CountUp value={props.value} />
+      </div>
+    </div>
+  );
+}
+
+function ByteStat(props: { label: string; value: number }) {
+  return (
+    <div className="stat">
+      <div className="stat-label">{props.label}</div>
+      <div className="stat-value">
+        <CountUp value={props.value} format={formatBytes} />
+      </div>
     </div>
   );
 }
