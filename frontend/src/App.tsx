@@ -10,6 +10,7 @@ import {
 } from "./wailsjs/go/bridge/DBService";
 import { bridge } from "./wailsjs/go/models";
 import { Logo } from "./components/Logo";
+import CollectionsView from "./views/CollectionsView";
 
 type DBStats = bridge.Stats;
 
@@ -22,7 +23,7 @@ type Row = {
 
 type ValueType = "json" | "number" | "text" | "empty";
 
-type NavId = "dashboard" | "console" | "browser" | "snapshots" | "settings";
+type NavId = "dashboard" | "collections" | "console" | "browser" | "snapshots" | "settings";
 
 const PAGE_SIZE = 50;
 const PREVIEW_BYTES = 80;
@@ -82,6 +83,18 @@ const NAV: { id: NavId; label: string; icon: JSX.Element }[] = [
         <rect x="14" y="3" width="7" height="5" rx="1.5" />
         <rect x="14" y="12" width="7" height="9" rx="1.5" />
         <rect x="3" y="16" width="7" height="5" rx="1.5" />
+      </svg>
+    )
+  },
+  {
+    id: "collections",
+    label: "Collections",
+    icon: (
+      <svg className="nav-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+        <rect x="3" y="4" width="7" height="7" rx="1.5" />
+        <rect x="14" y="4" width="7" height="7" rx="1.5" />
+        <rect x="3" y="13" width="7" height="7" rx="1.5" />
+        <rect x="14" y="13" width="7" height="7" rx="1.5" />
       </svg>
     )
   },
@@ -361,6 +374,7 @@ export default function App() {
           {nav === "dashboard" && (
             <DashboardView stats={stats} writePulse={writePulse} />
           )}
+          {nav === "collections" && <CollectionsView onStatus={setStatus} />}
           {nav === "console" && (
             <ConsoleView
               key_={key}

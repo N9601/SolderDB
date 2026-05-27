@@ -35,7 +35,7 @@ type CollectionMeta struct {
 	Updated string  `json:"updated"`
 }
 
-type Record struct {
+type Document struct {
 	ID      string                 `json:"id"`
 	Created string                 `json:"created"`
 	Updated string                 `json:"updated"`
@@ -43,8 +43,8 @@ type Record struct {
 }
 
 type ListRecordsResult struct {
-	Records   []Record `json:"records"`
-	NextAfter string   `json:"nextAfter"`
+	Records   []Document `json:"records"`
+	NextAfter string     `json:"nextAfter"`
 }
 
 // --- Conversions ---
@@ -75,8 +75,8 @@ func fromEngineMeta(m collections.CollectionMeta) CollectionMeta {
 	return CollectionMeta{Name: m.Name, Fields: fs, Created: m.Created, Updated: m.Updated}
 }
 
-func fromEngineRecord(r collections.Record) Record {
-	return Record{ID: r.ID, Created: r.Created, Updated: r.Updated, Data: r.Data}
+func fromEngineRecord(r collections.Record) Document {
+	return Document{ID: r.ID, Created: r.Created, Updated: r.Updated, Data: r.Data}
 }
 
 // --- API ---
@@ -126,26 +126,26 @@ func (c *CollectionsService) DeleteCollection(name string) error {
 	return c.svc.DeleteCollection(name)
 }
 
-func (c *CollectionsService) InsertRecord(collection string, data map[string]interface{}) (Record, error) {
+func (c *CollectionsService) InsertRecord(collection string, data map[string]interface{}) (Document, error) {
 	r, err := c.svc.Insert(collection, data)
 	if err != nil {
-		return Record{}, err
+		return Document{}, err
 	}
 	return fromEngineRecord(r), nil
 }
 
-func (c *CollectionsService) GetRecord(collection, id string) (Record, error) {
+func (c *CollectionsService) GetRecord(collection, id string) (Document, error) {
 	r, err := c.svc.GetRecord(collection, id)
 	if err != nil {
-		return Record{}, err
+		return Document{}, err
 	}
 	return fromEngineRecord(r), nil
 }
 
-func (c *CollectionsService) UpdateRecord(collection, id string, patch map[string]interface{}) (Record, error) {
+func (c *CollectionsService) UpdateRecord(collection, id string, patch map[string]interface{}) (Document, error) {
 	r, err := c.svc.UpdateRecord(collection, id, patch)
 	if err != nil {
-		return Record{}, err
+		return Document{}, err
 	}
 	return fromEngineRecord(r), nil
 }
@@ -159,7 +159,7 @@ func (c *CollectionsService) ListRecords(collection, after string, limit int) (L
 	if err != nil {
 		return ListRecordsResult{}, err
 	}
-	out := make([]Record, len(res.Records))
+	out := make([]Document, len(res.Records))
 	for i, r := range res.Records {
 		out[i] = fromEngineRecord(r)
 	}
