@@ -13,6 +13,7 @@ import (
 	"solderdb/internal/auth"
 	"solderdb/internal/collections"
 	"solderdb/internal/engine"
+	"solderdb/internal/files"
 	"solderdb/internal/realtime"
 )
 
@@ -30,7 +31,11 @@ func startTestServer(t *testing.T) (*Server, func()) {
 	if err != nil {
 		t.Fatalf("auth: %v", err)
 	}
-	srv := New(db, colls, authSvc, hub, Config{Addr: "127.0.0.1:0"})
+	fileSvc, err := files.New(colls, dir)
+	if err != nil {
+		t.Fatalf("files: %v", err)
+	}
+	srv := New(db, colls, authSvc, hub, fileSvc, Config{Addr: "127.0.0.1:0"})
 	if err := srv.Start(); err != nil {
 		t.Fatalf("start: %v", err)
 	}
@@ -40,6 +45,69 @@ func startTestServer(t *testing.T) (*Server, func()) {
 		_ = srv.Stop(ctx)
 		_ = db.Close()
 	}
+}
+
+func TestFilesUploadDownloadDelete(t *testing.T) {
+	srv, cleanup := startTestServer(t)
+	defer cleanup()
+	base := "http://" + srv.Addr()
+
+	// Raw upload via X-Filename header.
+	body := strings.Repeat("solder", 1000)
+	req, _ := http.NewRequest(http.MethodPost, base+"/api/files", strings.NewReader(body))
+	req.Header.Set("Content-Type", "text/plain")
+	req.Header.Set("X-Filename", "blob.txt")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("upload: %v", err)
+	}
+	out, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != 201 {
+		t.Fatalf("upload code=%d body=%s", resp.StatusCode, out)
+	}
+	var meta struct {
+		ID, Name, MimeType, SHA256 string
+		Size                       int64
+	}
+	if err := json.Unmarshal(out, &meta); err != nil || meta.ID == "" || meta.Size != int64(len(body)) {
+		t.Fatalf("bad meta: %s err=%v", out, err)
+	}
+
+	// Download and verify.
+	code, raw := doRaw(t, http.MethodGet, base+"/api/files/"+meta.ID)
+	if code != 200 || string(raw) != body {
+		t.Fatalf("download code=%d len=%d", code, len(raw))
+	}
+
+	// List.
+	code, listBody := doJSON(t, http.MethodGet, base+"/api/files", nil)
+	if code != 200 || !strings.Contains(string(listBody), meta.ID) {
+		t.Fatalf("list code=%d body=%s", code, listBody)
+	}
+
+	// Delete.
+	code, _ = doJSON(t, http.MethodDelete, base+"/api/files/"+meta.ID, nil)
+	if code != 200 {
+		t.Fatalf("delete code=%d", code)
+	}
+	// Now 404.
+	code, _ = doJSON(t, http.MethodGet, base+"/api/files/"+meta.ID, nil)
+	if code != 404 {
+		t.Fatalf("expected 404 after delete, got %d", code)
+	}
+}
+
+func doRaw(t *testing.T, method, url string) (int, []byte) {
+	t.Helper()
+	req, _ := http.NewRequest(method, url, nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("do: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	out, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, out
 }
 
 func TestSSEReceivesCollectionEvents(t *testing.T) {

@@ -12,6 +12,7 @@ import {
 import { bridge } from "./wailsjs/go/models";
 import { Logo } from "./components/Logo";
 import CollectionsView from "./views/CollectionsView";
+import FilesView from "./views/FilesView";
 import AuthView from "./views/AuthView";
 import { VerifyToken } from "./wailsjs/go/bridge/AuthService";
 import type { bridge as bridgeNS } from "./wailsjs/go/models";
@@ -27,7 +28,7 @@ type Row = {
 
 type ValueType = "json" | "number" | "text" | "empty";
 
-type NavId = "dashboard" | "collections" | "console" | "browser" | "snapshots" | "settings";
+type NavId = "dashboard" | "collections" | "files" | "console" | "browser" | "snapshots" | "settings";
 
 const PAGE_SIZE = 50;
 const PREVIEW_BYTES = 80;
@@ -99,6 +100,16 @@ const NAV: { id: NavId; label: string; icon: JSX.Element }[] = [
         <rect x="14" y="4" width="7" height="7" rx="1.5" />
         <rect x="3" y="13" width="7" height="7" rx="1.5" />
         <rect x="14" y="13" width="7" height="7" rx="1.5" />
+      </svg>
+    )
+  },
+  {
+    id: "files",
+    label: "Files",
+    icon: (
+      <svg className="nav-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+        <polyline points="14 2 14 8 20 8" />
       </svg>
     )
   },
@@ -424,7 +435,7 @@ function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
             </button>
           </div>
           <div className="flex items-center justify-between text-[10px] text-canvas-300">
-            <span className="font-mono">v0.1.0</span>
+            <span className="font-mono">v0.2.0</span>
             <span className="chip-mono inline-flex items-center gap-1.5 text-canvas-200">
               <span className={`dot ${writePulse ? "" : "dot-idle"}`} />
               {writePulse ? "WRITE" : "IDLE"}
@@ -477,6 +488,7 @@ function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
             <DashboardView stats={stats} writePulse={writePulse} />
           )}
           {nav === "collections" && <CollectionsView onStatus={setStatus} />}
+          {nav === "files" && <FilesView onStatus={setStatus} />}
           {nav === "console" && (
             <ConsoleView
               key_={key}

@@ -10,6 +10,7 @@ import (
 	"solderdb/internal/auth"
 	"solderdb/internal/bridge"
 	"solderdb/internal/collections"
+	"solderdb/internal/files"
 	"solderdb/internal/realtime"
 
 	"github.com/wailsapp/wails/v2"
@@ -66,7 +67,11 @@ func main() {
 		log.Fatalf("init auth: %v", err)
 	}
 	authBridge = bridge.NewAuthService(authSvc)
-	apiSrv := api.New(svc.Engine(), apiColls, authSvc, hub, api.Config{
+	fileSvc, err := files.New(apiColls, svc.Engine().DataDir())
+	if err != nil {
+		log.Fatalf("init files: %v", err)
+	}
+	apiSrv := api.New(svc.Engine(), apiColls, authSvc, hub, fileSvc, api.Config{
 		Addr:        "127.0.0.1:8787",
 		AllowOrigin: "*",
 	})

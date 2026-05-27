@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"strconv"
@@ -23,6 +24,7 @@ import (
 	"solderdb/internal/auth"
 	"solderdb/internal/collections"
 	"solderdb/internal/engine"
+	"solderdb/internal/files"
 	"solderdb/internal/realtime"
 )
 
@@ -40,17 +42,18 @@ type Server struct {
 	colls  *collections.Service
 	auth   *auth.Service
 	hub    *realtime.Hub
+	files  *files.Service
 	mux    *http.ServeMux
 	srv    *http.Server
 	mu     sync.Mutex
 	listen net.Listener
 }
 
-func New(db *engine.DB, colls *collections.Service, authSvc *auth.Service, hub *realtime.Hub, cfg Config) *Server {
+func New(db *engine.DB, colls *collections.Service, authSvc *auth.Service, hub *realtime.Hub, fileSvc *files.Service, cfg Config) *Server {
 	if cfg.Addr == "" {
 		cfg.Addr = "127.0.0.1:8787"
 	}
-	s := &Server{cfg: cfg, db: db, colls: colls, auth: authSvc, hub: hub, mux: http.NewServeMux()}
+	s := &Server{cfg: cfg, db: db, colls: colls, auth: authSvc, hub: hub, files: fileSvc, mux: http.NewServeMux()}
 	s.routes()
 	s.srv = &http.Server{
 		Handler:           s.withMiddleware(s.mux),
@@ -112,6 +115,132 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/auth/login", s.handleLogin)
 	s.mux.HandleFunc("/api/auth/me", s.handleMe)
 	s.mux.HandleFunc("/api/realtime", s.handleRealtime)
+	s.mux.HandleFunc("/api/files", s.handleFiles)
+	s.mux.HandleFunc("/api/files/", s.handleFileItem)
+}
+
+// ---------------- File handlers ----------------
+
+func (s *Server) handleFiles(w http.ResponseWriter, r *http.Request) {
+	if s.files == nil {
+		writeError(w, 500, "files not configured")
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		after := r.URL.Query().Get("after")
+		limit := 50
+		if v := r.URL.Query().Get("limit"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 500 {
+				limit = n
+			}
+		}
+		list, next, err := s.files.List(after, limit)
+		if err != nil {
+			writeError(w, 500, err.Error())
+			return
+		}
+		writeJSON(w, 200, map[string]any{"files": list, "nextAfter": next})
+	case http.MethodPost:
+		s.handleFileUpload(w, r)
+	default:
+		writeError(w, 405, "method not allowed")
+	}
+}
+
+// handleFileUpload accepts either multipart/form-data (one file under field
+// "file") or a raw body. For the raw path, set X-Filename and Content-Type.
+func (s *Server) handleFileUpload(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, int64(files.MaxUploadSize)+1024)
+
+	ct := r.Header.Get("Content-Type")
+	if strings.HasPrefix(ct, "multipart/form-data") {
+		if err := r.ParseMultipartForm(int64(files.MaxUploadSize)); err != nil {
+			writeError(w, 400, "parse multipart: "+err.Error())
+			return
+		}
+		f, hdr, err := r.FormFile("file")
+		if err != nil {
+			writeError(w, 400, "missing 'file' field")
+			return
+		}
+		defer func() { _ = f.Close() }()
+		mime := hdr.Header.Get("Content-Type")
+		meta, err := s.files.Upload(hdr.Filename, mime, f)
+		if err != nil {
+			writeError(w, 400, err.Error())
+			return
+		}
+		writeJSON(w, 201, meta)
+		return
+	}
+
+	name := r.Header.Get("X-Filename")
+	if name == "" {
+		writeError(w, 400, "X-Filename header required for raw upload")
+		return
+	}
+	mime := ct
+	if mime == "" {
+		mime = "application/octet-stream"
+	}
+	meta, err := s.files.Upload(name, mime, r.Body)
+	if err != nil {
+		writeError(w, 400, err.Error())
+		return
+	}
+	writeJSON(w, 201, meta)
+}
+
+func (s *Server) handleFileItem(w http.ResponseWriter, r *http.Request) {
+	if s.files == nil {
+		writeError(w, 500, "files not configured")
+		return
+	}
+	rest := strings.TrimPrefix(r.URL.Path, "/api/files/")
+	if rest == "" {
+		writeError(w, 404, "not found")
+		return
+	}
+	id := rest
+	meta := false
+	if strings.HasSuffix(rest, "/meta") {
+		id = strings.TrimSuffix(rest, "/meta")
+		meta = true
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		if meta {
+			m, err := s.files.Meta(id)
+			if err != nil {
+				writeError(w, 404, err.Error())
+				return
+			}
+			writeJSON(w, 200, m)
+			return
+		}
+		m, rc, err := s.files.Stream(id)
+		if err != nil {
+			writeError(w, 404, err.Error())
+			return
+		}
+		defer func() { _ = rc.Close() }()
+		w.Header().Set("Content-Type", m.MimeType)
+		w.Header().Set("Content-Length", strconv.FormatInt(m.Size, 10))
+		w.Header().Set("Content-Disposition", `inline; filename="`+m.Name+`"`)
+		w.Header().Set("X-File-SHA256", m.SHA256)
+		w.WriteHeader(200)
+		_, _ = io.Copy(w, rc)
+	case http.MethodDelete:
+		if err := s.files.Delete(id); err != nil {
+			writeError(w, 404, err.Error())
+			return
+		}
+		writeJSON(w, 200, map[string]any{"deleted": id})
+	default:
+		writeError(w, 405, "method not allowed")
+	}
 }
 
 // ---------------- Realtime (SSE) ----------------
