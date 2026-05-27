@@ -44,6 +44,7 @@ func startTestServer(t *testing.T) (*Server, func()) {
 		defer cancel()
 		_ = srv.Stop(ctx)
 		_ = db.Close()
+		testToken = ""
 	}
 }
 
@@ -51,12 +52,16 @@ func TestFilesUploadDownloadDelete(t *testing.T) {
 	srv, cleanup := startTestServer(t)
 	defer cleanup()
 	base := "http://" + srv.Addr()
+	registerAdminAndAuth(t, base)
 
 	// Raw upload via X-Filename header.
 	body := strings.Repeat("solder", 1000)
 	req, _ := http.NewRequest(http.MethodPost, base+"/api/files", strings.NewReader(body))
 	req.Header.Set("Content-Type", "text/plain")
 	req.Header.Set("X-Filename", "blob.txt")
+	if testToken != "" {
+		req.Header.Set("Authorization", "Bearer "+testToken)
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("upload: %v", err)
@@ -101,6 +106,9 @@ func TestFilesUploadDownloadDelete(t *testing.T) {
 func doRaw(t *testing.T, method, url string) (int, []byte) {
 	t.Helper()
 	req, _ := http.NewRequest(method, url, nil)
+	if testToken != "" {
+		req.Header.Set("Authorization", "Bearer "+testToken)
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("do: %v", err)
@@ -114,6 +122,7 @@ func TestSSEReceivesCollectionEvents(t *testing.T) {
 	srv, cleanup := startTestServer(t)
 	defer cleanup()
 	base := "http://" + srv.Addr()
+	token := registerAdminAndAuth(t, base)
 
 	// Set up the collection first.
 	if code, body := doJSON(t, http.MethodPost, base+"/api/collections", map[string]any{
@@ -123,8 +132,8 @@ func TestSSEReceivesCollectionEvents(t *testing.T) {
 		t.Fatalf("setup coll code=%d body=%s", code, body)
 	}
 
-	// Open SSE stream.
-	req, _ := http.NewRequest(http.MethodGet, base+"/api/realtime?topic=coll:live", nil)
+	// Open SSE stream — EventSource-style uses token query param.
+	req, _ := http.NewRequest(http.MethodGet, base+"/api/realtime?topic=coll:live&token="+token, nil)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("sse: %v", err)
@@ -267,6 +276,10 @@ func TestAuthFlow(t *testing.T) {
 	}
 }
 
+// testToken is set by tests that want every doJSON call to carry a bearer.
+// Tests can set it after registering an admin and clear it to test 401s.
+var testToken string
+
 func doJSON(t *testing.T, method, url string, body any) (int, []byte) {
 	t.Helper()
 	var rdr io.Reader
@@ -281,6 +294,9 @@ func doJSON(t *testing.T, method, url string, body any) (int, []byte) {
 	if rdr != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	if testToken != "" {
+		req.Header.Set("Authorization", "Bearer "+testToken)
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("do: %v", err)
@@ -288,6 +304,67 @@ func doJSON(t *testing.T, method, url string, body any) (int, []byte) {
 	defer func() { _ = resp.Body.Close() }()
 	out, _ := io.ReadAll(resp.Body)
 	return resp.StatusCode, out
+}
+
+// registerAdminAndAuth registers a fresh admin and sets testToken so
+// subsequent doJSON calls carry the bearer header.
+func registerAdminAndAuth(t *testing.T, base string) string {
+	t.Helper()
+	code, body := doJSON(t, http.MethodPost, base+"/api/auth/register", map[string]any{
+		"email":    "admin@test.local",
+		"password": "supersecret",
+	})
+	if code != 201 {
+		t.Fatalf("register admin code=%d body=%s", code, body)
+	}
+	var sess struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(body, &sess); err != nil {
+		t.Fatalf("decode session: %v", err)
+	}
+	testToken = sess.Token
+	return sess.Token
+}
+
+func TestAuthEnforcementOnProtectedRoutes(t *testing.T) {
+	srv, cleanup := startTestServer(t)
+	defer cleanup()
+	base := "http://" + srv.Addr()
+	// No token set — protected routes must reject.
+
+	if code, _ := doJSON(t, http.MethodGet, base+"/api/collections", nil); code != 401 {
+		t.Fatalf("expected 401 listing collections without token, got %d", code)
+	}
+	if code, _ := doJSON(t, http.MethodGet, base+"/api/stats", nil); code != 401 {
+		t.Fatalf("expected 401 on stats without token, got %d", code)
+	}
+	// Public still works.
+	if code, _ := doJSON(t, http.MethodGet, base+"/api/health", nil); code != 200 {
+		t.Fatalf("expected 200 on health, got %d", code)
+	}
+
+	// Register a non-admin user.
+	_ = registerAdminAndAuth(t, base) // admin slot taken
+	code, body := doJSON(t, http.MethodPost, base+"/api/auth/register", map[string]any{
+		"email": "user@test.local", "password": "anothersecret",
+	})
+	if code != 201 {
+		t.Fatalf("register user code=%d body=%s", code, body)
+	}
+	var sess struct {
+		Token string `json:"token"`
+	}
+	_ = json.Unmarshal(body, &sess)
+	testToken = sess.Token
+
+	// Non-admin cannot create a collection.
+	code, _ = doJSON(t, http.MethodPost, base+"/api/collections", map[string]any{
+		"name": "x", "fields": []map[string]any{{"name": "n", "type": "text"}},
+	})
+	if code != 403 {
+		t.Fatalf("expected 403 for non-admin create, got %d", code)
+	}
 }
 
 func TestHealth(t *testing.T) {
@@ -307,6 +384,7 @@ func TestCollectionsCRUDOverHTTP(t *testing.T) {
 	srv, cleanup := startTestServer(t)
 	defer cleanup()
 	base := "http://" + srv.Addr()
+	registerAdminAndAuth(t, base)
 
 	// Create a collection.
 	createBody := map[string]any{
@@ -376,6 +454,7 @@ func TestValidationErrors(t *testing.T) {
 	srv, cleanup := startTestServer(t)
 	defer cleanup()
 	base := "http://" + srv.Addr()
+	registerAdminAndAuth(t, base)
 
 	// Create coll with required title.
 	_, _ = doJSON(t, http.MethodPost, base+"/api/collections", map[string]any{
@@ -400,6 +479,7 @@ func TestKVEndpoints(t *testing.T) {
 	srv, cleanup := startTestServer(t)
 	defer cleanup()
 	base := "http://" + srv.Addr()
+	registerAdminAndAuth(t, base)
 
 	// PUT
 	code, _ := doJSON(t, http.MethodPut, base+"/api/kv/foo", map[string]any{"value": "bar"})

@@ -10,6 +10,7 @@ import {
 } from "../wailsjs/go/bridge/CollectionsService";
 import { GetAPIAddr } from "../wailsjs/go/bridge/DBService";
 import { bridge } from "../wailsjs/go/models";
+import { withAuthQuery } from "../lib/apiFetch";
 
 type Collection = bridge.CollectionMeta;
 type Field = bridge.Field;
@@ -75,7 +76,7 @@ export default function CollectionsView({ onStatus }: Props) {
       try {
         const apiAddr = await GetAPIAddr();
         if (!apiAddr || cancelled) return;
-        es = new EventSource(`${apiAddr}/api/realtime?topic=coll:${encodeURIComponent(selected.name)}`);
+        es = new EventSource(withAuthQuery(`${apiAddr}/api/realtime?topic=coll:${encodeURIComponent(selected.name)}`));
         const onEvent = (kind: string) => {
           setLivePulse(kind);
           if (livePulseTimer.current !== null) window.clearTimeout(livePulseTimer.current);

@@ -56,7 +56,7 @@ func New(db *engine.DB, colls *collections.Service, authSvc *auth.Service, hub *
 	s := &Server{cfg: cfg, db: db, colls: colls, auth: authSvc, hub: hub, files: fileSvc, mux: http.NewServeMux()}
 	s.routes()
 	s.srv = &http.Server{
-		Handler:           s.withMiddleware(s.mux),
+		Handler:           s.withMiddleware(s.authMiddleware(s.mux)),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	return s
@@ -377,16 +377,35 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, user)
 }
 
+// allowsQueryToken reports whether ?token=… is an acceptable auth fallback
+// for this request. We restrict it to cases where the browser-initiated
+// request (EventSource, <img>, <a download>) cannot set a custom header.
+func allowsQueryToken(r *http.Request) bool {
+	if r.URL.Path == "/api/realtime" {
+		return true
+	}
+	if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/files/") {
+		return true
+	}
+	return false
+}
+
 // currentUser parses the Authorization header and returns the user, if any.
+// For the SSE endpoint (/api/realtime) it also accepts ?token=... because
+// EventSource cannot set custom headers in the browser.
 func (s *Server) currentUser(r *http.Request) (auth.User, bool) {
 	if s.auth == nil {
 		return auth.User{}, false
 	}
-	h := r.Header.Get("Authorization")
-	if !strings.HasPrefix(h, "Bearer ") {
+	token := ""
+	if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
+		token = strings.TrimPrefix(h, "Bearer ")
+	} else if allowsQueryToken(r) {
+		token = r.URL.Query().Get("token")
+	}
+	if token == "" {
 		return auth.User{}, false
 	}
-	token := strings.TrimPrefix(h, "Bearer ")
 	u, err := s.auth.VerifyToken(token)
 	if err != nil {
 		return auth.User{}, false

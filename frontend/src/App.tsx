@@ -16,6 +16,7 @@ import FilesView from "./views/FilesView";
 import AuthView from "./views/AuthView";
 import { VerifyToken } from "./wailsjs/go/bridge/AuthService";
 import type { bridge as bridgeNS } from "./wailsjs/go/models";
+import { getToken, setToken } from "./lib/apiFetch";
 
 type DBStats = bridge.Stats;
 
@@ -157,8 +158,6 @@ const NAV: { id: NavId; label: string; icon: JSX.Element }[] = [
   }
 ];
 
-const TOKEN_KEY = "solderdb.token";
-
 type AuthState =
   | { state: "loading" }
   | { state: "signedOut" }
@@ -168,7 +167,7 @@ export default function App() {
   const [auth, setAuth] = useState<AuthState>({ state: "loading" });
 
   useEffect(() => {
-    const token = window.localStorage.getItem(TOKEN_KEY);
+    const token = getToken();
     if (!token) {
       setAuth({ state: "signedOut" });
       return;
@@ -178,7 +177,7 @@ export default function App() {
         const user = await VerifyToken(token);
         setAuth({ state: "signedIn", user, token });
       } catch {
-        window.localStorage.removeItem(TOKEN_KEY);
+        setToken("");
         setAuth({ state: "signedOut" });
       }
     })();
@@ -195,7 +194,7 @@ export default function App() {
     return (
       <AuthView
         onSignedIn={(sess) => {
-          window.localStorage.setItem(TOKEN_KEY, sess.token);
+          setToken(sess.token);
           setAuth({ state: "signedIn", user: sess.user, token: sess.token });
         }}
       />
@@ -206,7 +205,7 @@ export default function App() {
     <AppShell
       user={auth.user}
       onSignOut={() => {
-        window.localStorage.removeItem(TOKEN_KEY);
+        setToken("");
         setAuth({ state: "signedOut" });
       }}
     />

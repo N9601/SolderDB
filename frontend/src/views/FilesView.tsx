@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GetAPIAddr } from "../wailsjs/go/bridge/DBService";
+import { apiFetch, apiJSON, withAuthQuery } from "../lib/apiFetch";
 
 type FileMeta = {
   id: string;
@@ -46,8 +47,7 @@ export default function FilesView({ onStatus }: Props) {
   const refresh = useCallback(async () => {
     if (!apiAddr) return;
     try {
-      const res = await fetch(`${apiAddr}/api/files?limit=200`);
-      const data = (await res.json()) as { files?: FileMeta[] };
+      const data = await apiJSON<{ files?: FileMeta[] }>(`${apiAddr}/api/files?limit=200`);
       setFiles(data.files ?? []);
     } catch (e) {
       onStatus(`Files list error: ${String(e)}`);
@@ -61,7 +61,7 @@ export default function FilesView({ onStatus }: Props) {
   // SSE: refresh on file collection changes.
   useEffect(() => {
     if (!apiAddr) return;
-    const es = new EventSource(`${apiAddr}/api/realtime?topic=coll:_files`);
+    const es = new EventSource(withAuthQuery(`${apiAddr}/api/realtime?topic=coll:_files`));
     const tick = () => void refresh();
     es.addEventListener("create", tick);
     es.addEventListener("delete", tick);
@@ -77,7 +77,7 @@ export default function FilesView({ onStatus }: Props) {
     try {
       const form = new FormData();
       form.append("file", file);
-      const res = await fetch(`${apiAddr}/api/files`, { method: "POST", body: form });
+      const res = await apiFetch(`${apiAddr}/api/files`, { method: "POST", body: form });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}) as { error?: string });
         throw new Error(body.error ?? `HTTP ${res.status}`);
@@ -103,7 +103,7 @@ export default function FilesView({ onStatus }: Props) {
     if (!apiAddr) return;
     if (!window.confirm(`Delete "${name}"?`)) return;
     try {
-      const res = await fetch(`${apiAddr}/api/files/${id}`, { method: "DELETE" });
+      const res = await apiFetch(`${apiAddr}/api/files/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       onStatus(`Deleted ${name}`);
       await refresh();
@@ -173,7 +173,7 @@ export default function FilesView({ onStatus }: Props) {
                   {isImage(f.mimeType) && apiAddr ? (
                     // eslint-disable-next-line jsx-a11y/img-redundant-alt
                     <img
-                      src={`${apiAddr}/api/files/${f.id}`}
+                      src={withAuthQuery(`${apiAddr}/api/files/${f.id}`)}
                       alt={f.name}
                       className="h-full w-full object-cover"
                       loading="lazy"
@@ -197,7 +197,7 @@ export default function FilesView({ onStatus }: Props) {
                   <div className="mt-2 flex gap-1.5">
                     <a
                       className="btn btn-ghost flex-1 justify-center"
-                      href={`${apiAddr}/api/files/${f.id}`}
+                      href={withAuthQuery(`${apiAddr}/api/files/${f.id}`)}
                       target="_blank"
                       rel="noreferrer"
                     >
