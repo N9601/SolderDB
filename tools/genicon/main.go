@@ -1,7 +1,7 @@
 // genicon paints the SolderDB app icon and writes both:
 //
-//	build/appicon.png        — 1024x1024 PNG for Wails / macOS bundles
-//	build/windows/icon.ico   — multi-resolution Windows .ico file
+//	build/appicon.png       , 1024x1024 PNG for Wails / macOS bundles
+//	build/windows/icon.ico  , multi-resolution Windows .ico file
 //
 // Stdlib only. Run from the repo root with:
 //
@@ -20,7 +20,7 @@ import (
 	"path/filepath"
 )
 
-// Brand palette — kept in sync with frontend/tailwind.config.ts.
+// Brand palette, kept in sync with frontend/tailwind.config.ts.
 var (
 	bgInk      = color.NRGBA{R: 0x14, G: 0x18, B: 0x1f, A: 0xff}
 	bgInkLight = color.NRGBA{R: 0x25, G: 0x2b, B: 0x35, A: 0xff}
@@ -90,14 +90,14 @@ func renderIcon(size int) *image.NRGBA {
 		drawDisk(img, cx, yy, diskW/2, diskH/2, baseShade, steel)
 	}
 
-	// Connection nodes — small steel dots flanking the cylinder hinting at a network.
+	// Connection nodes, small steel dots flanking the cylinder hinting at a network.
 	nodeR := r * 0.05
 	fillCircle(img, cx-r*0.85, cy+r*0.05, nodeR, steel, 1)
 	fillCircle(img, cx+r*0.85, cy+r*0.05, nodeR, steel, 1)
 	fillCircle(img, cx-r*0.85, cy+r*0.35, nodeR*0.7, steel, 1)
 	fillCircle(img, cx+r*0.85, cy+r*0.35, nodeR*0.7, steel, 1)
 
-	// Spark at the top of the cylinder — copper glow + bright core.
+	// Spark at the top of the cylinder, copper glow + bright core.
 	sparkX := cx + r*0.20
 	sparkY := cy - r*0.18
 	drawSparkGlow(img, sparkX, sparkY, r*0.42)
@@ -196,7 +196,7 @@ func drawSparkGlow(img *image.NRGBA, cx, cy, r float64) {
 func drawRoundedRect(img *image.NRGBA, x0, y0, x1, y1, radius int, colorAt func(x, y int) color.NRGBA) {
 	for y := y0; y < y1; y++ {
 		for x := x0; x < x1; x++ {
-			// Distance to nearest corner — if inside the inner rect, draw.
+			// Distance to nearest corner, if inside the inner rect, draw.
 			dx, dy := 0, 0
 			if x < x0+radius {
 				dx = (x0 + radius) - x

@@ -17,31 +17,31 @@ Authentication via `Authorization: Bearer <token>` header, or `?token=<token>` q
 
 | Method | Path | Policy | Body / params | Returns |
 |--------|------|--------|---------------|---------|
-| GET | `/api/health` | public | — | `{ "ok": true, "service": "solderdb" }` |
+| GET | `/api/health` | public |  | `{ "ok": true, "service": "solderdb" }` |
 | POST | `/api/auth/register` | public | `{ email, password }` | `Session` |
 | POST | `/api/auth/login` | public | `{ email, password }` | `Session` |
-| GET | `/api/auth/me` | authed | — | `User` |
+| GET | `/api/auth/me` | authed |  | `User` |
 | POST | `/api/auth/password` | authed | `{ current, next }` | `User` |
-| GET | `/api/collections` | authed | — | `CollectionMeta[]` |
+| GET | `/api/collections` | authed |  | `CollectionMeta[]` |
 | POST | `/api/collections` | admin | `CollectionMeta` | `CollectionMeta` |
-| GET | `/api/collections/:name` | authed | — | `CollectionMeta` |
+| GET | `/api/collections/:name` | authed |  | `CollectionMeta` |
 | PATCH | `/api/collections/:name` | admin | `{ fields?, listRule?, viewRule?, createRule?, updateRule?, deleteRule? }` | `CollectionMeta` |
-| DELETE | `/api/collections/:name` | admin | — | `{ deleted }` |
+| DELETE | `/api/collections/:name` | admin |  | `{ deleted }` |
 | GET | `/api/collections/:name/records` | rule | `?limit=&after=` | `{ records, nextAfter }` |
 | POST | `/api/collections/:name/records` | rule | record data | `Document` |
-| GET | `/api/collections/:name/records/:id` | rule | — | `Document` |
+| GET | `/api/collections/:name/records/:id` | rule |  | `Document` |
 | PATCH | `/api/collections/:name/records/:id` | rule | partial record data | `Document` |
-| DELETE | `/api/collections/:name/records/:id` | rule | — | `{ deleted }` |
+| DELETE | `/api/collections/:name/records/:id` | rule |  | `{ deleted }` |
 | GET | `/api/files` | authed | `?limit=&after=` | `{ files, nextAfter }` |
 | POST | `/api/files` | authed | multipart `file` or raw body with `X-Filename` | `FileMeta` |
-| GET | `/api/files/:id` | authed | — | raw bytes |
-| DELETE | `/api/files/:id` | admin | — | `{ deleted }` |
-| GET | `/api/kv/:key` | authed | — | `{ key, value }` |
+| GET | `/api/files/:id` | authed |  | raw bytes |
+| DELETE | `/api/files/:id` | admin |  | `{ deleted }` |
+| GET | `/api/kv/:key` | authed |  | `{ key, value }` |
 | PUT | `/api/kv/:key` | admin | `{ value }` | `{ key }` |
-| DELETE | `/api/kv/:key` | admin | — | `{ deleted }` |
+| DELETE | `/api/kv/:key` | admin |  | `{ deleted }` |
 | GET | `/api/realtime` | authed | `?topic=...` | SSE stream |
 | GET | `/api/logs` | admin | `?limit=` | `LogEntry[]` |
-| GET | `/api/stats` | admin | — | `Stats` |
+| GET | `/api/stats` | admin |  | `Stats` |
 
 "rule" in the Policy column means the rule is sourced from the target collection's per-action rule (default `authed`).
 
@@ -51,7 +51,7 @@ Authentication via `Authorization: Bearer <token>` header, or `?token=<token>` q
 |------|---------|
 | 200 | Success |
 | 201 | Created (POST that creates a resource) |
-| 400 | Bad request — body parse error, validation, unknown field, etc. |
+| 400 | Bad request (body parse error, validation, unknown field, etc.) |
 | 401 | Missing or invalid token |
 | 403 | Token valid but role insufficient (admin required) |
 | 404 | Resource not found |
@@ -158,4 +158,4 @@ Authentication via `Authorization: Bearer <token>` header, or `?token=<token>` q
 
 ## CORS
 
-The server sets `Access-Control-Allow-Origin: *` and handles `OPTIONS` preflight on every route. Safe because it only binds to `127.0.0.1` — external networks can't reach it regardless.
+The server sets `Access-Control-Allow-Origin: *` and handles `OPTIONS` preflight on every route. Safe because it only binds to `127.0.0.1`, so external networks can't reach it regardless.

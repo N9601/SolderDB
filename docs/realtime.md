@@ -36,8 +36,8 @@ The hub matches topics by **prefix segments**, separated by `:`. A subscriber to
 | `coll`                 | Every collection event from every collection                |
 | `coll:notes`           | All events on the `notes` collection                        |
 | `coll:notes:01H...`    | Just events for that specific record                        |
-| `coll:_files`          | Every file upload / delete (since files ride on a collection) |
-| `logs`                 | Every API request (admin-only — used by the Activity view)  |
+| `coll:_files`          | Every file upload and delete (since files ride on a collection) |
+| `logs`                 | Every API request (admin-only, used by the Activity view)   |
 | `*` or `coll:*`        | Wildcard (matches anything with the prefix)                 |
 
 ## Browser (EventSource)
@@ -77,16 +77,16 @@ stop, _ := notes.Subscribe(ctx, func(evt solderdb.Event) {
 defer stop()
 ```
 
-The Go SDK parses the SSE framing internally; you just get a typed callback.
+The Go SDK parses the SSE framing internally. You just get a typed callback.
 
 ## Backpressure
 
-Each subscriber has a buffered channel (default 64 events). If your handler can't keep up, **the hub drops events for that subscriber** rather than blocking writers. This is deliberate — a slow consumer cannot stall the database.
+Each subscriber has a buffered channel (default 64 events). If your handler can't keep up, **the hub drops events for that subscriber** rather than blocking writers. This is deliberate. A slow consumer cannot stall the database.
 
 If you need durability (no events lost), poll `/api/collections/.../records?after=<lastID>` periodically as a backstop.
 
 ## Reconnect
 
-`EventSource` reconnects automatically on transient disconnects. The SolderDB JS SDK leaves this default in place; if you need custom reconnect logic, you can pass your own subscriber.
+`EventSource` reconnects automatically on transient disconnects. The SolderDB JS SDK leaves this default in place. If you need custom reconnect logic, you can pass your own subscriber.
 
-There's no resume / "from this event ID" semantics in v1 — when you reconnect, you start receiving live events again but you don't get a backlog of what you missed. Use the polling backstop above if that matters.
+There's no resume or "from this event ID" semantics in v1. When you reconnect, you start receiving live events again but you don't get a backlog of what you missed. Use the polling backstop above if that matters.

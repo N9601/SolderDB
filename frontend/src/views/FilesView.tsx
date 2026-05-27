@@ -164,7 +164,7 @@ export default function FilesView({ onStatus }: Props) {
           </button>
         </div>
         {files.length === 0 ? (
-          <div className="px-4 py-10 text-center text-[12px] text-ink-400">No files yet — drop one above.</div>
+          <div className="px-4 py-10 text-center text-[12px] text-ink-400">No files yet, drop one above.</div>
         ) : (
           <div className="grid grid-cols-2 gap-3 p-4 md:grid-cols-3 lg:grid-cols-4">
             {files.map((f) => (

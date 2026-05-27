@@ -5,10 +5,10 @@ import { useEffect, useState } from "react";
  * Always runs for at least MIN_DURATION_MS so a fast init doesn't flicker.
  *
  * Stages, layered in CSS animation delays:
- *  0–250ms   logo materializes
- *  150–600ms solder spark pulses, copper rings expand outward
- *  500–900ms wordmark fades up
- *  800–1400ms boot-log lines tick in
+ *  0-250ms   logo materializes
+ *  150-600ms solder spark pulses, copper rings expand outward
+ *  500-900ms wordmark fades up
+ *  800-1400ms boot-log lines tick in
  *  1400ms+   parent fades away (handled by `done` prop on consumer)
  */
 type Props = {
@@ -120,7 +120,7 @@ export function BootSplash({ onMinDurationElapsed, leaving }: Props) {
   );
 }
 
-/** A pared-down version of the main Logo, tuned for the splash — animated
+/** A pared-down version of the main Logo, tuned for the splash, animated
  *  spark and copper-glow tip, with a slight scale-in entrance. */
 function BootLogo() {
   return (

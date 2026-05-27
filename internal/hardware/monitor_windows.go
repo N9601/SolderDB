@@ -11,7 +11,7 @@ func platformMonitor() Monitor { return &winMonitor{} }
 
 type winMonitor struct{}
 
-// SYSTEM_POWER_STATUS — see kernel32.dll GetSystemPowerStatus
+// SYSTEM_POWER_STATUS, see kernel32.dll GetSystemPowerStatus
 //
 //	BYTE  ACLineStatus       0 offline, 1 online, 255 unknown
 //	BYTE  BatteryFlag        bitmask, 128 = no battery, 255 unknown
@@ -39,7 +39,7 @@ func (m *winMonitor) Read() Status {
 	var p sysPowerStatus
 	ret, _, _ := procGetSystemPowerStatus.Call(uintptr(unsafe.Pointer(&p)))
 	if ret != 0 {
-		// 128 = "No system battery" — leave BatteryKnown false.
+		// 128 = "No system battery", leave BatteryKnown false.
 		if p.BatteryFlag != 128 && p.BatteryFlag != 255 {
 			st.BatteryKnown = true
 			if p.BatteryLifePercent != 255 {

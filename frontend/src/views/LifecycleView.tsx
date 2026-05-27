@@ -93,7 +93,7 @@ export default function LifecycleView() {
           <div>
             <div className="section-title">Data Lifecycle</div>
             <div className="section-sub">
-              A live view of the LSM tree — Memtable filling up, WAL appending, SSTables flushing & compacting.
+              A live view of the LSM tree, Memtable filling up, WAL appending, SSTables flushing & compacting.
             </div>
           </div>
           <div className="flex gap-1.5">
@@ -236,7 +236,7 @@ function SSTableLane(props: { sizes: number[]; flashCompact: boolean }) {
   if (props.sizes.length === 0) {
     return (
       <div className="flex items-center justify-center rounded-md border border-dashed border-canvas-300 bg-canvas-100 py-10 text-[12px] text-ink-400">
-        No SSTables on disk yet — keep writing to trigger a flush.
+        No SSTables on disk yet, keep writing to trigger a flush.
       </div>
     );
   }
@@ -248,7 +248,7 @@ function SSTableLane(props: { sizes: number[]; flashCompact: boolean }) {
           <div
             key={i}
             className="group flex min-w-[80px] flex-col items-center"
-            title={`SSTable #${i + 1} — ${fmt(sz)}`}
+            title={`SSTable #${i + 1}, ${fmt(sz)}`}
           >
             <div
               className="w-[64px] rounded-md border border-gunmetal-700 bg-gradient-to-b from-gunmetal-700 to-gunmetal-900 shadow-sm transition-all duration-300"

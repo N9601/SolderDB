@@ -1,6 +1,6 @@
 # solderdb
 
-JavaScript / TypeScript SDK for [SolderDB](https://github.com/N9601/SolderDB) — a local-first single-binary database.
+JavaScript / TypeScript SDK for [SolderDB](https://github.com/N9601/SolderDB), a local-first single-binary database.
 
 Works in browsers and Node 18+. No runtime dependencies.
 

@@ -5,7 +5,7 @@ order: 3
 
 # Authentication
 
-SolderDB has built-in auth — users, roles, signed session tokens. No external identity provider required.
+SolderDB has built-in auth: users, roles, signed session tokens. No external identity provider required.
 
 ## Users
 
@@ -22,7 +22,7 @@ Users live in the internal `_users` collection. Each has:
 }
 ```
 
-You don't edit this collection directly — it's gated behind admin-only middleware. Use the auth endpoints / SDK methods instead.
+You don't edit this collection directly. It's gated behind admin-only middleware. Use the auth endpoints or SDK methods instead.
 
 ## First user becomes admin
 
@@ -42,7 +42,7 @@ Login returns a `Session`:
 }
 ```
 
-The token is **not** a JWT — it's a custom HMAC-SHA256 signed payload:
+The token is **not** a JWT. It's a custom HMAC-SHA256 signed payload:
 
 ```
 base64url(payload-json) "." base64url(hmac-sha256(secret, payload-json))
@@ -50,9 +50,9 @@ base64url(payload-json) "." base64url(hmac-sha256(secret, payload-json))
 
 Where payload is `{ sub: userID, iat: <unix>, exp: <unix> }`.
 
-The signing secret is generated on first run (32 random bytes from `crypto/rand`) and persisted to `<dataDir>/.secret`. **Don't share that file** — possessing it lets you forge tokens.
+The signing secret is generated on first run (32 random bytes from `crypto/rand`) and persisted to `<dataDir>/.secret`. **Don't share that file.** Possessing it lets you forge tokens.
 
-Tokens are valid for 7 days. There's no refresh flow in v1; you log in again when one expires.
+Tokens are valid for 7 days. There's no refresh flow in v1. You log in again when one expires.
 
 ## Sending the token
 
@@ -75,7 +75,7 @@ Content-Type: application/json
 { "current": "supersecret", "next": "newpassword" }
 ```
 
-Existing tokens stay valid (they were HMAC-signed against the server secret, not the password). To force logout on password change, rotate `<dataDir>/.secret` — every token becomes invalid immediately.
+Existing tokens stay valid (they were HMAC-signed against the server secret, not the password). To force logout on password change, rotate `<dataDir>/.secret`. Every token becomes invalid immediately.
 
 ## Roles & policies
 
@@ -87,13 +87,13 @@ The HTTP middleware enforces three policy levels:
 | `authed` | Any valid token |
 | `admin`  | Token belongs to a `role: "admin"` user |
 
-Defaults fail closed — unknown routes require `authed`. Collection record endpoints are special: the policy comes from the collection's per-action rule (`listRule` / `createRule` / etc.).
+Defaults fail closed. Unknown routes require `authed`. Collection record endpoints are special: the policy comes from the collection's per-action rule (`listRule`, `createRule`, etc.).
 
 ## Threat model
 
-SolderDB binds to `127.0.0.1` only. It's designed for **local trust** — anyone with a shell on the machine can read the data directory directly, regardless of auth. Auth exists to:
+SolderDB binds to `127.0.0.1` only. It's designed for **local trust**. Anyone with a shell on the machine can read the data directory directly, regardless of auth. Auth exists to:
 
-- Gate the admin GUI against shoulder-surfers / shared workstations
+- Gate the admin GUI against shoulder-surfers and shared workstations
 - Provide per-user audit trails (the activity log records the user behind each request)
 - Enforce per-collection rules when you expose the API to other apps on the same machine
 

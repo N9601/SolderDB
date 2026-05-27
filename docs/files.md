@@ -43,8 +43,8 @@ curl -X POST http://localhost:8787/api/files \
 ## Constraints
 
 - Max file size: **100 MB** (configurable in `internal/files/files.go`)
-- The server hashes the body with SHA-256 as it streams it to disk — the hash is part of every file's metadata
-- Uploads are atomic: bytes land in `<dataDir>/files/<id>.tmp` first, then `rename()`'d to `<id>` only after successful close. A partial upload leaves no garbage.
+- The server hashes the body with SHA-256 as it streams it to disk. The hash is part of every file's metadata
+- Uploads are atomic. Bytes land in `<dataDir>/files/<id>.tmp` first, then `rename()`'d to `<id>` only after successful close. A partial upload leaves no garbage.
 
 ## Download
 
@@ -53,7 +53,7 @@ GET /api/files/:id
 Authorization: Bearer <token>
 ```
 
-Or for browser `<img>` / `<a href>`, append `?token=<token>` (no header):
+Or for browser `<img>` and `<a href>`, append `?token=<token>` (no header):
 
 ```html
 <img src="http://localhost:8787/api/files/01H...?token=eyJzdWI..." />
@@ -80,7 +80,7 @@ X-File-SHA256:       <hex digest>
 GET /api/files?limit=50&after=<id>
 ```
 
-Returns the same shape as collection listing — paginated, sorted by creation order.
+Returns the same shape as collection listing. Paginated, sorted by creation order.
 
 ## Delete
 
@@ -110,11 +110,11 @@ const photo = await photos.get(id);
 const src = db.files.url(photo.data.fileId);
 ```
 
-There's no foreign-key enforcement in v1 — if you delete a file the record's `fileId` becomes a dead reference. Validate manually or write a periodic cleanup.
+There's no foreign-key enforcement in v1. If you delete a file the record's `fileId` becomes a dead reference. Validate manually or write a periodic cleanup.
 
 ## Realtime events for files
 
-Files publish to `coll:_files` topics (because the metadata lives in a collection). Subscribe to react to uploads / deletes:
+Files publish to `coll:_files` topics (because the metadata lives in a collection). Subscribe to react to uploads and deletes:
 
 ```ts
 const es = new EventSource(`http://localhost:8787/api/realtime?topic=coll:_files&token=${token}`);

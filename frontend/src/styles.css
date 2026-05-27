@@ -146,7 +146,7 @@ body {
 [data-theme="dark"] .border-canvas-200 { border-color: var(--border) !important; }
 [data-theme="dark"] .border-canvas-300 { border-color: var(--border-strong) !important; }
 
-/* Hover states — Tailwind compiles `hover:bg-canvas-X` into a separate
+/* Hover states, Tailwind compiles `hover:bg-canvas-X` into a separate
    selector that the flat overrides above don't cover, so the light bg
    leaks through on hover. Mirror them explicitly. */
 [data-theme="dark"] .hover\:bg-canvas-50:hover   { background: var(--bg-soft) !important; }
@@ -156,7 +156,7 @@ body {
 [data-theme="dark"] .hover\:border-canvas-200:hover { border-color: var(--border-strong) !important; }
 [data-theme="dark"] .hover\:border-canvas-300:hover { border-color: var(--border-strong) !important; }
 
-/* Selected row in copper — tone it down so it sits properly on a dark surface. */
+/* Selected row in copper, tone it down so it sits properly on a dark surface. */
 [data-theme="dark"] .bg-copper-50 {
   background: rgba(224, 122, 37, 0.10) !important;
 }
@@ -206,7 +206,7 @@ body {
   border-color: var(--border);
 }
 
-/* Workspace ambient — a faint copper sheen sits high on the page so cards
+/* Workspace ambient, a faint copper sheen sits high on the page so cards
    feel like they're catching light from above. Pure aesthetic. */
 main {
   position: relative;
@@ -612,7 +612,7 @@ main > * {
   }
 }
 
-/* Sidebar item — refined hover with subtle slide */
+/* Sidebar item, refined hover with subtle slide */
 .nav-item {
   position: relative;
 }
@@ -633,7 +633,7 @@ main > * {
   transform: scaleY(1);
 }
 
-/* Empty-state hero — used by views without data yet */
+/* Empty-state hero, used by views without data yet */
 .empty-hero {
   display: flex;
   flex-direction: column;
@@ -655,7 +655,7 @@ main > * {
   margin-bottom: 16px;
 }
 
-/* Focus ring — consistent across interactive elements */
+/* Focus ring, consistent across interactive elements */
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
@@ -764,7 +764,7 @@ a:focus-visible {
   100% { width: 100%; }
 }
 
-/* Docs view — markdown prose */
+/* Docs view, markdown prose */
 .prose-doc {
   max-width: 760px;
   font-size: 14px;

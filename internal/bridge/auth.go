@@ -15,7 +15,7 @@ func NewAuthService(svc *auth.Service) *AuthService {
 	return &AuthService{svc: svc}
 }
 
-// DTOs mirror the auth package — kept here so Wails generates clean TS classes.
+// DTOs mirror the auth package, kept here so Wails generates clean TS classes.
 
 type User struct {
 	ID      string `json:"id"`

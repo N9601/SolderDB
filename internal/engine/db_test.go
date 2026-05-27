@@ -249,7 +249,7 @@ func TestWALCorruptedTailIsIgnored(t *testing.T) {
 		t.Fatalf("close: %v", err)
 	}
 
-	// Append garbage to WAL — simulates a torn write at the tail.
+	// Append garbage to WAL, simulates a torn write at the tail.
 	walPath := filepath.Join(dir, "wal.bin")
 	f, err := os.OpenFile(walPath, os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {

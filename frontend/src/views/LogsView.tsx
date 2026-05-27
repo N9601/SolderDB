@@ -38,7 +38,7 @@ export default function LogsView() {
       const tail = await apiJSON<LogEntry[]>(`${apiAddr}/api/logs?limit=500`);
       setEntries(tail ?? []);
     } catch {
-      // ignore — likely not admin
+      // ignore, likely not admin
     }
   }, [apiAddr]);
 
@@ -106,7 +106,7 @@ export default function LogsView() {
         </div>
         <div className="max-h-[65vh] overflow-auto font-mono text-[11.5px]">
           {filtered.length === 0 ? (
-            <div className="px-4 py-10 text-center text-ink-400">No activity yet — make a request.</div>
+            <div className="px-4 py-10 text-center text-ink-400">No activity yet, make a request.</div>
           ) : (
             filtered.map((e, i) => (
               <div key={i} className="grid grid-cols-12 gap-2 border-b border-canvas-150 px-4 py-1.5 hover:bg-canvas-100">
@@ -116,7 +116,7 @@ export default function LogsView() {
                 </div>
                 <div className={`col-span-1 font-semibold ${statusColor(e.status)}`}>{e.status === 0 ? "ERR" : e.status}</div>
                 <div className="col-span-5 truncate text-ink-900" title={e.path}>{e.path}</div>
-                <div className="col-span-2 truncate text-ink-500">{e.user || "—"}</div>
+                <div className="col-span-2 truncate text-ink-500">{e.user || "-"}</div>
                 <div className="col-span-1 text-right text-ink-500">{e.durationMs}</div>
               </div>
             ))
@@ -160,7 +160,7 @@ function statusColor(s: number): string {
 }
 
 function fmtTime(iso: string): string {
-  if (!iso) return "—";
+  if (!iso) return "-";
   try {
     const d = new Date(iso);
     return d.toLocaleTimeString(undefined, { hour12: false }) + "." + String(d.getMilliseconds()).padStart(3, "0");

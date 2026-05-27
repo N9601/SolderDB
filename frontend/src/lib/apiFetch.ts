@@ -17,7 +17,7 @@ export function setToken(v: string): void {
 }
 
 /**
- * Append `?token=<bearer>` to a URL — required for EventSource subscriptions
+ * Append `?token=<bearer>` to a URL, required for EventSource subscriptions
  * because the browser EventSource API can't set custom headers.
  */
 export function withAuthQuery(url: string): string {

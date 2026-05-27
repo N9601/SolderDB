@@ -14,11 +14,11 @@
 
 ### **A local-first single-binary database.**
 
-LSM engine · REST · Auth · Collections · Realtime · Files · CLI · JS + Go SDKs — built from scratch in Go.
+LSM engine, REST, Auth, Collections, Realtime, Files, CLI, JS and Go SDKs. Built from scratch in Go.
 
-<sub>Precision · Connection · Data</sub>
+<sub>Precision. Connection. Data.</sub>
 
-[Quickstart](#quickstart) · [Features](#features) · [SDKs](#sdks) · [REST API](#rest-api) · [Architecture](#architecture) · [Docs](./docs/index.md) · [Roadmap](./docs/roadmap.md)
+[Quickstart](#quickstart) | [Features](#features) | [SDKs](#sdks) | [REST API](#rest-api) | [Architecture](#architecture) | [Docs](./docs/index.md) | [Roadmap](./docs/roadmap.md)
 
 </div>
 
@@ -26,7 +26,7 @@ LSM engine · REST · Auth · Collections · Realtime · Files · CLI · JS + Go
 
 ## Quickstart
 
-**1. Download `SolderDB.exe`** from [Releases](https://github.com/N9601/SolderDB/releases) and run it. A native window opens. Register the first account — that user becomes the admin.
+**1. Download `SolderDB.exe`** from [Releases](https://github.com/N9601/SolderDB/releases) and run it. A native window opens. Register the first account. That user becomes the admin.
 
 **2. Hit it from your code:**
 
@@ -47,13 +47,13 @@ await notes.create({ title: "hello" });
 notes.subscribe(evt => console.log(evt.kind, evt.id));
 ```
 
-Or hit it with `curl`, the [Go SDK](#go), the [`solderdb` CLI](#cli), or the in-app **API Explorer**. The whole product is one local HTTP server on `127.0.0.1:8787` plus a desktop admin UI.
+Or use `curl`, the [Go SDK](#go), the [`solderdb` CLI](#cli), or the in-app **API Explorer**. The whole product is one local HTTP server on `127.0.0.1:8787` plus a desktop admin UI.
 
 ---
 
 ## Why
 
-PocketBase and Supabase pin you to SQLite/Postgres. SolderDB gives you the same DX — *typed collections, auth, realtime, files, admin UI* — on a storage engine **you own end-to-end**. From-scratch Log-Structured Merge tree, zero third-party DB libs. Every byte that touches disk is code you can audit in this repo.
+PocketBase and Supabase pin you to SQLite/Postgres. SolderDB gives you the same developer experience (typed collections, auth, realtime, files, admin UI) on a storage engine you own end-to-end. From-scratch Log-Structured Merge tree, zero third-party DB libraries. Every byte that touches disk is code you can audit in this repo.
 
 Single binary. Your machine. Nothing leaves the box.
 
@@ -65,52 +65,52 @@ Single binary. Your machine. Nothing leaves the box.
 <tr>
 <td width="50%" valign="top">
 
-### 🔧 Engine
-- **LSM tree** — Memtable + WAL + SSTables, hand-built
-- **CRC32C** per WAL record; torn-tail aware
-- **Bloom filter** per SSTable (~1% FPR)
-- **Hardware-aware compaction** — pauses on low battery / hot CPU
+### Engine
+- **LSM tree** with Memtable, WAL, and SSTables, hand-built
+- **CRC32C** on every WAL record, torn-tail aware
+- **Bloom filter** per SSTable (about 1% false-positive rate)
+- **Hardware-aware compaction** that pauses on low battery or hot CPU
 - **Crash recovery** via WAL replay
-- **Snapshots** — consistent disk-level copies
+- **Snapshots** for consistent disk-level copies
 
-### 📚 Collections
-- Typed records (`text` · `number` · `bool` · `json` · `date`)
-- Schema editor with required + unique fields
-- **Per-op access rules** — `public` / `authed` / `admin` on each of `list / view / create / update / delete`
+### Collections
+- Typed records (`text`, `number`, `bool`, `json`, `date`)
+- Schema editor with required and unique fields
+- **Per-op access rules** of `public`, `authed`, or `admin` on each of `list`, `view`, `create`, `update`, `delete`
 - Time-sortable ULID-style IDs
-- Range scans with `Start` / `End` bounds
+- Range scans with `Start` and `End` bounds
 
-### 🔐 Auth
-- bcrypt + HMAC-SHA256 sessions
-- First user → admin
-- Role-based middleware (admin / authed / public)
+### Auth
+- bcrypt with HMAC-SHA256 session tokens
+- First registered user becomes admin
+- Role-based middleware (admin, authed, public)
 - Password change endpoint
 
 </td>
 <td width="50%" valign="top">
 
-### 🌐 REST & Realtime
+### REST and Realtime
 - Embedded `net/http` server on `127.0.0.1:8787`
 - **Server-Sent Events** for realtime subscriptions
-- CORS-enabled for local web dev
-- Activity log streamed live (admin)
+- CORS-enabled for local web development
+- Activity log streamed live for admins
 
-### 📦 Files
+### Files
 - Multipart upload, SHA-256 hashed
 - 100 MB per file
-- Authenticated `?token=` URLs for `<img>` tags
+- Authenticated `?token=` URLs that work in `<img>` tags
 
-### 🛠 Developer Surface
+### Developer surface
 - **JS / TS SDK** (`npm install solderdb`)
-- **Go SDK** (stdlib-only)
+- **Go SDK** (stdlib only)
 - **CLI** (`solderdb` binary)
 - Wails-generated TS bindings
 
-### 🎨 Admin GUI
-- Dark sidebar + light workspace (with **dark mode**)
-- **Cmd-K** command palette
-- **Lifecycle visualizer** — live LSM animation
-- **API Explorer** — Postman-style
+### Admin GUI
+- Dark sidebar with light workspace, plus full **dark mode**
+- **Cmd+K** command palette
+- **Lifecycle visualizer** with live LSM animation
+- **API Explorer** in Postman style
 - Activity logs, Profile, Snapshots, Hardware monitor
 - Boot splash, animated counters, toast notifications
 
@@ -202,11 +202,11 @@ solderdb logs 20
 
 ## REST API
 
-Base URL: `http://127.0.0.1:8787`. Tokens in `Authorization: Bearer <token>` (or `?token=` for SSE / `<img>`).
+Base URL: `http://127.0.0.1:8787`. Tokens go in `Authorization: Bearer <token>` (or `?token=` for SSE and `<img>` URLs).
 
 ```
 GET    /api/health                             public
-POST   /api/auth/register                      public · first user = admin
+POST   /api/auth/register                      public, first user becomes admin
 POST   /api/auth/login                         public
 GET    /api/auth/me                            authed
 POST   /api/auth/password                      authed
@@ -233,43 +233,43 @@ GET    /api/logs                               admin
 GET    /api/stats                              admin
 ```
 
-Full reference: [`docs/rest-api.md`](./docs/rest-api.md). Or open the **API Explorer** inside the app — every endpoint, interactive.
+Full reference: [`docs/rest-api.md`](./docs/rest-api.md). Or open the **API Explorer** inside the app for an interactive version of every endpoint.
 
 ---
 
 ## Architecture
 
 ```
-                    ┌──────────────────────────────────────┐
-                    │  Wails desktop window (React + TS)   │
-                    │  · Cmd-K · Lifecycle · API Explorer  │
-                    └────────────┬─────────────────────────┘
-                                 │ Wails-generated TS bindings
-                    ┌────────────▼─────────────────────────┐
-                    │  bridge package (Go)                 │
-                    └────────────┬─────────────────────────┘
-                                 │
-                ┌────────────────▼────────────────┐    ┌─────────────────────┐
-                │  REST API (127.0.0.1:8787)      │◄───┤  JS / Go SDK / CLI  │
-                │  net/http + auth middleware     │    └─────────────────────┘
-                └────────────────┬────────────────┘
-                                 │
-              ┌──────────────────┼──────────────────┐
-              │                  │                  │
-     ┌────────▼──────┐ ┌─────────▼──────┐ ┌────────▼────────┐
-     │  collections  │ │     files      │ │      auth       │
-     │   + rules     │ │   blob store   │ │  bcrypt + HMAC  │
-     └────────┬──────┘ └────────┬───────┘ └────────┬────────┘
-              └─────────────────┼──────────────────┘
-                                │
-                  ┌─────────────▼──────────────┐
-                  │  engine (Go, stdlib only)  │
-                  │  Memtable → WAL → SSTables │
-                  │  Bloom · Compactor · Gate  │
-                  └────────────────────────────┘
+                    +--------------------------------------+
+                    |  Wails desktop window (React + TS)   |
+                    |  Cmd+K, Lifecycle, API Explorer      |
+                    +------------+-------------------------+
+                                 | Wails-generated TS bindings
+                    +------------v-------------------------+
+                    |  bridge package (Go)                 |
+                    +------------+-------------------------+
+                                 |
+                +----------------v----------------+    +---------------------+
+                |  REST API (127.0.0.1:8787)      |<---|  JS / Go SDK / CLI  |
+                |  net/http + auth middleware     |    +---------------------+
+                +----------------+----------------+
+                                 |
+              +------------------+------------------+
+              |                  |                  |
+     +--------v------+ +---------v------+ +--------v--------+
+     |  collections  | |     files      | |      auth       |
+     |   + rules     | |   blob store   | |  bcrypt + HMAC  |
+     +--------+------+ +--------+-------+ +--------+--------+
+              +-----------------+--------------------+
+                                |
+                  +-------------v--------------+
+                  |  engine (Go, stdlib only)  |
+                  |  Memtable, WAL, SSTables   |
+                  |  Bloom, Compactor, Gate    |
+                  +----------------------------+
 ```
 
-Storage path: `%APPDATA%\SolderDB\` (Windows) · `~/.config/SolderDB/` (Linux) · `~/Library/Application Support/SolderDB/` (macOS).
+Storage path: `%APPDATA%\SolderDB\` on Windows, `~/.config/SolderDB/` on Linux, `~/Library/Application Support/SolderDB/` on macOS.
 
 ---
 
@@ -288,7 +288,7 @@ go test ./...
 cd frontend && npx tsc --noEmit && npm run build
 ```
 
-Build a release binary:
+Release build:
 
 ```bash
 wails build -clean -platform windows/amd64
@@ -311,12 +311,12 @@ Full release process: [`RELEASE.md`](./RELEASE.md).
 SolderDB/
 ├── main.go                   Wails entry, wires everything up
 ├── internal/
-│   ├── engine/               LSM core — Memtable, WAL, SSTable, compaction
+│   ├── engine/               LSM core. Memtable, WAL, SSTable, compaction
 │   ├── collections/          Typed-record layer
 │   ├── auth/                 bcrypt + HMAC sessions
 │   ├── files/                Blob storage
 │   ├── realtime/             In-process pub/sub
-│   ├── hardware/             Per-OS battery + thermal monitors
+│   ├── hardware/             Per-OS battery and thermal monitors
 │   ├── logs/                 Ring buffer of recent requests
 │   ├── api/                  REST server + middleware
 │   └── bridge/               Wails service adapters
@@ -339,9 +339,9 @@ MIT. See [LICENSE](./LICENSE).
 
 <div align="center">
 
-**v1.0.0** — first stable release.
-Engine · Collections · Auth · REST · Realtime · Files · SDKs · CLI · Admin GUI.
+**v1.0.0**. First stable release.
+Engine, Collections, Auth, REST, Realtime, Files, SDKs, CLI, Admin GUI.
 
-[Changelog](./CHANGELOG.md) · [Roadmap](./docs/roadmap.md) · [Issues](https://github.com/N9601/SolderDB/issues)
+[Changelog](./CHANGELOG.md) | [Roadmap](./docs/roadmap.md) | [Issues](https://github.com/N9601/SolderDB/issues)
 
 </div>

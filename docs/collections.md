@@ -16,7 +16,7 @@ A collection's metadata lives at the KV key `_coll:meta:<name>`. Its records liv
 | Type     | JSON shape                          | Notes |
 |----------|-------------------------------------|-------|
 | `text`   | `string`                            | UTF-8, unlimited length (bound by record size) |
-| `number` | `number`                            | Stored as `float64`; integers up to 2^53 are exact |
+| `number` | `number`                            | Stored as `float64`. Integers up to 2^53 are exact |
 | `bool`   | `boolean`                           |  |
 | `json`   | any JSON value (object/array/etc.)  | Stored verbatim |
 | `date`   | ISO-8601 `string`                   | E.g. `"2026-05-27T12:34:56Z"` |
@@ -29,7 +29,7 @@ Validation runs on every `Insert` and `Update`:
 - **Type checks** match the declared field type
 - **Unknown fields** (not in the schema) are rejected with a 400
 
-The engine doesn't enforce uniqueness yet — `unique: true` on a field is accepted but not yet implemented. Roadmapped for v1.x via secondary indexes.
+The engine doesn't enforce uniqueness yet. `unique: true` on a field is accepted but not yet implemented. Roadmapped for v1.x via secondary indexes.
 
 ## Access rules
 
@@ -41,9 +41,9 @@ Each collection carries five rules:
 
 Each is one of:
 
-- `public` — anyone, no auth required
-- `authed` — any signed-in user
-- `admin` — only `role: "admin"` users
+- `public`: anyone, no auth required
+- `authed`: any signed-in user
+- `admin`: only `role: "admin"` users
 
 Defaults are `authed` if you don't set them.
 
@@ -82,9 +82,9 @@ Pass `nextAfter` back as `?after=` to paginate.
 
 The schema editor in the admin GUI lets you add fields, remove fields, change types, change required-ness, and edit rules.
 
-**Removing a field doesn't delete existing data** — the bytes stay on disk in the affected records but become invisible to validation. Run snapshots before destructive schema changes.
+**Removing a field doesn't delete existing data.** The bytes stay on disk in the affected records but become invisible to validation. Run snapshots before destructive schema changes.
 
-**Renaming a field is a remove + add** — there's no rename operation in v1.
+**Renaming a field is a remove plus add.** There's no rename operation in v1.
 
 ## SDKs
 

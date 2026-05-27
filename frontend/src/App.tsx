@@ -324,7 +324,7 @@ function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
 
   useStatusToast(status);
 
-  // G+digit nav shortcut — type "g" then a number key within 1.5s.
+  // G+digit nav shortcut, type "g" then a number key within 1.5s.
   useEffect(() => {
     let armed = false;
     let timer: number | null = null;
@@ -378,7 +378,7 @@ function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
     {
       id: "action-compact",
       label: "Compact SSTables",
-      hint: "merge SSTables — admin",
+      hint: "merge SSTables, admin",
       group: "Actions",
       run: () => void onCompact()
     },
@@ -683,7 +683,7 @@ function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
                 className={`flex h-7 w-7 items-center justify-center rounded-full bg-copper-500 text-[11px] font-semibold text-white transition-shadow ${
                   nav === "profile" ? "ring-2 ring-copper-300 ring-offset-2 ring-offset-gunmetal-900" : "hover:shadow-copper-glow"
                 }`}
-                title={`${props.user.email} · ${props.user.role} — open profile`}
+                title={`${props.user.email} · ${props.user.role}, open profile`}
               >
                 {props.user.email.charAt(0).toUpperCase()}
               </button>
@@ -715,7 +715,7 @@ function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
                 target="_blank"
                 rel="noreferrer"
                 className="chip chip-copper chip-mono hover:underline"
-                title="Local REST API — click for health check"
+                title="Local REST API, click for health check"
               >
                 ⟁ API · {apiAddr.replace(/^https?:\/\//, "")}
               </a>
@@ -723,7 +723,7 @@ function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
             {hw?.throttled && (
               <span
                 className="chip chip-mono border-amber-200 bg-amber-50 text-amber-800"
-                title={`Compaction paused — ${hw.reason}`}
+                title={`Compaction paused, ${hw.reason}`}
               >
                 ⚠ Compaction paused · {hw.reason}
               </span>
@@ -916,12 +916,12 @@ function HardwareCard(props: { hw: bridgeNS.HardwareStatus }) {
         />
         <HwStat
           label="Battery"
-          value={hw.batteryKnown ? `${hw.batteryPct}%` : "—"}
+          value={hw.batteryKnown ? `${hw.batteryPct}%` : "-"}
           tone={hw.batteryKnown && hw.batteryPct < 25 ? "warn" : "ok"}
         />
         <HwStat
           label="CPU Temp"
-          value={hw.cpuTempKnown ? `${hw.cpuTempC.toFixed(1)}°C` : "—"}
+          value={hw.cpuTempKnown ? `${hw.cpuTempC.toFixed(1)}°C` : "-"}
           tone={hw.cpuTempKnown && hw.cpuTempC > 80 ? "warn" : "ok"}
         />
         <HwStat label="Platform" value={hw.platform} tone="ok" />
@@ -960,7 +960,7 @@ function HardwareCard(props: { hw: bridgeNS.HardwareStatus }) {
                   checked={thresh.pauseOnBattery}
                   onChange={(e) => void save({ pauseOnBattery: e.target.checked })}
                 />
-                Yes — never compact on battery
+                Yes, never compact on battery
               </label>
             </div>
           </div>
@@ -1049,7 +1049,7 @@ function ConsoleView(props: {
             ? props.readType === "json"
               ? tryFormatJSON(props.readValue).formatted
               : props.readValue
-            : "—"}
+            : "-"}
         </pre>
         <div className="text-[11px] text-ink-400">
           Click any row in the Data Browser to load it here.
@@ -1208,7 +1208,7 @@ function SnapshotsView(props: { dataDir: string; onSnapshot: () => void }) {
         </div>
         {list.length === 0 ? (
           <div className="px-4 py-10 text-center text-[12px] text-ink-400">
-            No snapshots yet — create one above.
+            No snapshots yet, create one above.
           </div>
         ) : (
           <table className="w-full text-left text-[12.5px]">
@@ -1318,12 +1318,12 @@ curl -X POST ${props.apiAddr}/api/collections/notes/records \\
         <div className="section-title">Engine</div>
         <div className="section-sub">Read-only configuration · runtime stats</div>
         <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-          <KV label="Data Directory" value={props.stats?.dataDir ?? "—"} mono />
-          <KV label="WAL Path" value={props.stats?.walPath ?? "—"} mono />
-          <KV label="Memtable Bytes" value={props.stats ? formatBytes(props.stats.memtableBytes) : "—"} />
-          <KV label="WAL Bytes" value={props.stats ? formatBytes(props.stats.walBytes) : "—"} />
-          <KV label="SSTable Count" value={String(props.stats?.ssTableCount ?? "—")} />
-          <KV label="Total Keys (incl. tombstones)" value={String(props.stats?.keys ?? "—")} />
+          <KV label="Data Directory" value={props.stats?.dataDir ?? "-"} mono />
+          <KV label="WAL Path" value={props.stats?.walPath ?? "-"} mono />
+          <KV label="Memtable Bytes" value={props.stats ? formatBytes(props.stats.memtableBytes) : "-"} />
+          <KV label="WAL Bytes" value={props.stats ? formatBytes(props.stats.walBytes) : "-"} />
+          <KV label="SSTable Count" value={String(props.stats?.ssTableCount ?? "-")} />
+          <KV label="Total Keys (incl. tombstones)" value={String(props.stats?.keys ?? "-")} />
         </div>
       </div>
     </div>
@@ -1436,7 +1436,7 @@ function TypeChip(props: { type: ValueType; compact?: boolean }) {
     json: { label: "JSON", cls: "chip-copper" },
     number: { label: "NUM", cls: "chip-steel" },
     text: { label: "TEXT", cls: "chip" },
-    empty: { label: "—", cls: "chip" }
+    empty: { label: "-", cls: "chip" }
   };
   const { label, cls } = map[props.type];
   if (props.compact) {

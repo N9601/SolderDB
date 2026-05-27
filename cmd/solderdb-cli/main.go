@@ -103,7 +103,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Println(`solderdb — local REST client for SolderDB
+	fmt.Println(`solderdb, local REST client for SolderDB
 
 Commands:
   login <email> <password>          authenticate and save token

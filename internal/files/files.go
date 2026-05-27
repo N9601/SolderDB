@@ -2,11 +2,11 @@
 //
 // Layout on disk:
 //
-//	<dataDir>/files/<id>           — the blob (raw bytes, no envelope)
-//	<dataDir>/files/<id>.tmp       — staging file during upload (renamed on success)
+//	<dataDir>/files/<id>          , the blob (raw bytes, no envelope)
+//	<dataDir>/files/<id>.tmp      , staging file during upload (renamed on success)
 //
 // Metadata lives in the internal `_files` collection so blobs get all the
-// engine benefits — snapshots, realtime events, listing. The blob itself
+// engine benefits, snapshots, realtime events, listing. The blob itself
 // is excluded from snapshots in this version; we treat the metadata as
 // the index and the on-disk blob as the payload. (A future Snapshot()
 // extension can copy the files dir too.)
@@ -188,7 +188,7 @@ func (s *Service) Delete(id string) error {
 	if err := s.colls.DeleteRecord(FilesCollection, id); err != nil {
 		return err
 	}
-	// Best-effort blob removal — meta deletion is the source of truth.
+	// Best-effort blob removal, meta deletion is the source of truth.
 	if blobID != "" {
 		_ = os.Remove(filepath.Join(s.dir, blobID))
 	}

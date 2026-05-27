@@ -17,28 +17,28 @@ type Endpoint = {
 
 const ENDPOINTS: Endpoint[] = [
   // Auth
-  { id: "health", method: "GET", path: "/api/health", title: "Health", description: "Public — returns {ok:true}.", group: "Auth" },
-  { id: "register", method: "POST", path: "/api/auth/register", title: "Register", description: "Public — creates a user. First user becomes admin.", group: "Auth", defaultBody: `{\n  "email": "you@example.com",\n  "password": "supersecret"\n}` },
-  { id: "login", method: "POST", path: "/api/auth/login", title: "Login", description: "Public — returns a session token.", group: "Auth", defaultBody: `{\n  "email": "you@example.com",\n  "password": "supersecret"\n}` },
-  { id: "me", method: "GET", path: "/api/auth/me", title: "Me", description: "Authed — returns the current user.", group: "Auth" },
+  { id: "health", method: "GET", path: "/api/health", title: "Health", description: "Public, returns {ok:true}.", group: "Auth" },
+  { id: "register", method: "POST", path: "/api/auth/register", title: "Register", description: "Public, creates a user. First user becomes admin.", group: "Auth", defaultBody: `{\n  "email": "you@example.com",\n  "password": "supersecret"\n}` },
+  { id: "login", method: "POST", path: "/api/auth/login", title: "Login", description: "Public, returns a session token.", group: "Auth", defaultBody: `{\n  "email": "you@example.com",\n  "password": "supersecret"\n}` },
+  { id: "me", method: "GET", path: "/api/auth/me", title: "Me", description: "Authed, returns the current user.", group: "Auth" },
 
   // Collections (admin for mutations)
-  { id: "list-coll", method: "GET", path: "/api/collections", title: "List collections", description: "Authed — every collection's schema.", group: "Collections" },
+  { id: "list-coll", method: "GET", path: "/api/collections", title: "List collections", description: "Authed, every collection's schema.", group: "Collections" },
   { id: "create-coll", method: "POST", path: "/api/collections", title: "Create collection", description: "Admin only.", group: "Collections", defaultBody: `{\n  "name": "notes",\n  "fields": [\n    {"name": "title", "type": "text", "required": true},\n    {"name": "pinned", "type": "bool"}\n  ]\n}` },
   { id: "get-coll", method: "GET", path: "/api/collections/:name", title: "Get collection", description: "Authed.", group: "Collections" },
   { id: "patch-coll", method: "PATCH", path: "/api/collections/:name", title: "Update schema", description: "Admin.", group: "Collections", defaultBody: `{\n  "fields": [\n    {"name": "title", "type": "text", "required": true}\n  ]\n}` },
-  { id: "del-coll", method: "DELETE", path: "/api/collections/:name", title: "Delete collection", description: "Admin — also deletes every record.", group: "Collections" },
+  { id: "del-coll", method: "DELETE", path: "/api/collections/:name", title: "Delete collection", description: "Admin, also deletes every record.", group: "Collections" },
 
   // Records
-  { id: "list-recs", method: "GET", path: "/api/collections/:name/records?limit=50", title: "List records", description: "Authed — paginated.", group: "Records" },
+  { id: "list-recs", method: "GET", path: "/api/collections/:name/records?limit=50", title: "List records", description: "Authed, paginated.", group: "Records" },
   { id: "create-rec", method: "POST", path: "/api/collections/:name/records", title: "Create record", description: "Authed.", group: "Records", defaultBody: `{\n  "title": "hello"\n}` },
   { id: "get-rec", method: "GET", path: "/api/collections/:name/records/:id", title: "Get record", description: "Authed.", group: "Records" },
-  { id: "patch-rec", method: "PATCH", path: "/api/collections/:name/records/:id", title: "Update record", description: "Authed — partial patch.", group: "Records", defaultBody: `{\n  "title": "updated"\n}` },
+  { id: "patch-rec", method: "PATCH", path: "/api/collections/:name/records/:id", title: "Update record", description: "Authed, partial patch.", group: "Records", defaultBody: `{\n  "title": "updated"\n}` },
   { id: "del-rec", method: "DELETE", path: "/api/collections/:name/records/:id", title: "Delete record", description: "Authed.", group: "Records" },
 
   // Files
   { id: "list-files", method: "GET", path: "/api/files?limit=50", title: "List files", description: "Authed.", group: "Files" },
-  { id: "get-file", method: "GET", path: "/api/files/:id", title: "Download file", description: "Authed — streams raw bytes.", group: "Files" },
+  { id: "get-file", method: "GET", path: "/api/files/:id", title: "Download file", description: "Authed, streams raw bytes.", group: "Files" },
   { id: "del-file", method: "DELETE", path: "/api/files/:id", title: "Delete file", description: "Admin.", group: "Files" },
 
   // KV

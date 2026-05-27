@@ -133,7 +133,7 @@ func TestSSEReceivesCollectionEvents(t *testing.T) {
 		t.Fatalf("setup coll code=%d body=%s", code, body)
 	}
 
-	// Open SSE stream — EventSource-style uses token query param.
+	// Open SSE stream, EventSource-style uses token query param.
 	req, _ := http.NewRequest(http.MethodGet, base+"/api/realtime?topic=coll:live&token="+token, nil)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -251,7 +251,7 @@ func TestAuthFlow(t *testing.T) {
 	defer cleanup()
 	base := "http://" + srv.Addr()
 
-	// Register first user — should become admin.
+	// Register first user, should become admin.
 	code, body := doJSON(t, http.MethodPost, base+"/api/auth/register", map[string]any{
 		"email":    "alice@example.com",
 		"password": "supersecret",
@@ -397,7 +397,7 @@ func TestAuthEnforcementOnProtectedRoutes(t *testing.T) {
 	srv, cleanup := startTestServer(t)
 	defer cleanup()
 	base := "http://" + srv.Addr()
-	// No token set — protected routes must reject.
+	// No token set, protected routes must reject.
 
 	if code, _ := doJSON(t, http.MethodGet, base+"/api/collections", nil); code != 401 {
 		t.Fatalf("expected 401 listing collections without token, got %d", code)

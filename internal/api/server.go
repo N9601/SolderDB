@@ -1,5 +1,5 @@
 // Package api exposes an HTTP/REST surface over the engine + collections
-// services. Built on net/http only — no third-party routers.
+// services. Built on net/http only, no third-party routers.
 //
 // Routing is path-based with small handler-dispatch helpers. Every response
 // is JSON. Errors use a consistent shape: { "error": "message" }.
@@ -700,7 +700,7 @@ func (s *Server) handleRecord(w http.ResponseWriter, r *http.Request, coll, id s
 	}
 }
 
-// /api/kv/<key> — raw KV access (for the dev/admin scenario; not the primary API).
+// /api/kv/<key>, raw KV access (for the dev/admin scenario; not the primary API).
 func (s *Server) handleKV(w http.ResponseWriter, r *http.Request) {
 	key := strings.TrimPrefix(r.URL.Path, "/api/kv/")
 	if key == "" {

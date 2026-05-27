@@ -11,7 +11,7 @@ type Props = {
 
 /**
  * Smoothly animates from the previous displayed value to the next prop value.
- * Cheap — runs ~16 frames per transition via rAF. Cancels & restarts if value
+ * Cheap, runs ~16 frames per transition via rAF. Cancels & restarts if value
  * changes mid-flight.
  */
 export function CountUp({ value, format, ms = 320, className }: Props) {

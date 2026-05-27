@@ -1,6 +1,6 @@
 // Package collections implements a typed-record layer on top of the KV engine.
 // Records are stored as JSON values under deterministic keys so the underlying
-// engine remains a pure KV store — no engine changes are required.
+// engine remains a pure KV store, no engine changes are required.
 //
 // Key layout (all keys live in the same KV namespace as user data):
 //
@@ -8,7 +8,7 @@
 //	_coll:rec:<name>:<id>          JSON  Record (id, created, updated, data)
 //	_coll:idx:<name>:<field>:<v>:<id>   "" (unique-constraint marker, future)
 //
-// IDs are ULID-like — 26 chars of crockford-base32, time-prefixed so they
+// IDs are ULID-like, 26 chars of crockford-base32, time-prefixed so they
 // sort by creation order. This means listing records via the engine's
 // sorted Scan() yields chronological order by default.
 package collections
@@ -46,9 +46,9 @@ type Field struct {
 
 // Rule controls who can perform an operation on a collection.
 //
-//	"public"  — anyone, no auth required
-//	"authed"  — any signed-in user
-//	"admin"   — only role=admin
+//	"public" , anyone, no auth required
+//	"authed" , any signed-in user
+//	"admin"  , only role=admin
 //
 // Empty string is treated as "authed" so older collections keep working.
 type Rule string
@@ -96,7 +96,7 @@ type ListResult struct {
 	NextAfter string   `json:"nextAfter"`
 }
 
-// Notifier is the realtime hook. Optional — services without a notifier
+// Notifier is the realtime hook. Optional, services without a notifier
 // behave exactly the same, just without emitting events.
 type Notifier interface {
 	Publish(topic string, kind, collection, id string, data interface{})
@@ -247,7 +247,7 @@ func (s *Service) ListCollections() ([]CollectionMeta, error) {
 }
 
 // DeleteCollection removes the metadata AND every record in the collection.
-// This is a hard delete — relies on tombstones in the engine; run Compact() to reclaim space.
+// This is a hard delete, relies on tombstones in the engine; run Compact() to reclaim space.
 func (s *Service) DeleteCollection(name string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -485,7 +485,7 @@ func checkType(f Field, val interface{}) error {
 }
 
 func coerceTypes(meta CollectionMeta, data map[string]interface{}) map[string]interface{} {
-	// Currently a passthrough — present so future migrations (e.g. int -> float64)
+	// Currently a passthrough, present so future migrations (e.g. int -> float64)
 	// have a single chokepoint.
 	_ = meta
 	return data

@@ -65,7 +65,7 @@ export default function AuthView(props: { onSignedIn: (sess: bridge.Session) => 
                 <span className="text-copper-400">Yours to deploy anywhere.</span>
               </div>
               <div className="mt-5 text-[13px] leading-relaxed text-canvas-300">
-                SolderDB is a single binary — LSM engine, REST API, auth, collections, files, realtime —
+                SolderDB is a single binary, LSM engine, REST API, auth, collections, files, realtime,
                 running on your machine. No servers required.
               </div>
             </div>

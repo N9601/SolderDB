@@ -245,7 +245,7 @@ function SessionCard({ onSignOut }: { onSignOut: () => void }) {
   const [revealed, setRevealed] = useState(false);
   const [copied, setCopied] = useState(false);
   const token = getToken();
-  const masked = token ? token.slice(0, 12) + "…" + token.slice(-8) : "—";
+  const masked = token ? token.slice(0, 12) + "…" + token.slice(-8) : "-";
 
   function copy() {
     if (!token) return;
@@ -314,7 +314,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 }
 
 function fmtDate(iso: string): string {
-  if (!iso) return "—";
+  if (!iso) return "-";
   try {
     return new Date(iso).toLocaleString();
   } catch {

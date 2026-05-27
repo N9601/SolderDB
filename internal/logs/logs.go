@@ -18,7 +18,7 @@ type Entry struct {
 	Remote    string `json:"remote,omitempty"`
 }
 
-// Publisher is satisfied by realtime.Hub — kept narrow so logs doesn't
+// Publisher is satisfied by realtime.Hub, kept narrow so logs doesn't
 // import realtime directly.
 type Publisher interface {
 	Publish(topic string, evt interface{})
@@ -55,7 +55,7 @@ func (b *Buffer) Append(e Entry) {
 	b.mu.Lock()
 	b.entries = append(b.entries, e)
 	if len(b.entries) > b.max {
-		// drop the oldest in O(n) — acceptable for hundreds of entries.
+		// drop the oldest in O(n), acceptable for hundreds of entries.
 		b.entries = b.entries[len(b.entries)-b.max:]
 	}
 	b.nextSeq++

@@ -13,9 +13,9 @@ import (
 
 // Authorization model:
 //
-//   public  — no token required (auth/login, auth/register, health)
-//   authed  — any valid user token
-//   admin   — token with role=admin
+//   public , no token required (auth/login, auth/register, health)
+//   authed , any valid user token
+//   admin  , token with role=admin
 //
 // Policy is decided per route below in routePolicy().
 
@@ -38,7 +38,7 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		pol := s.routePolicy(r)
 
-		// Always allow CORS preflight unchanged — origin/method headers are
+		// Always allow CORS preflight unchanged, origin/method headers are
 		// applied earlier in withMiddleware.
 		if r.Method == http.MethodOptions {
 			next.ServeHTTP(w, r)
@@ -108,7 +108,7 @@ func (s *Server) logMiddleware(next http.Handler) http.Handler {
 func (s *Server) enforceRule(w http.ResponseWriter, r *http.Request, rule collections.Rule) (auth.User, bool) {
 	switch rule.Normalize() {
 	case collections.RulePublic:
-		// Anyone — return current user if a valid token happened to be present.
+		// Anyone, return current user if a valid token happened to be present.
 		u, _ := s.currentUser(r)
 		return u, true
 	case collections.RuleAuthed:
@@ -137,7 +137,7 @@ func (s *Server) enforceRule(w http.ResponseWriter, r *http.Request, rule collec
 // routePolicy maps an incoming request to the required auth level.
 // Defaults to authed so adding new endpoints fails closed.
 //
-// Record routes return policyOpen — the handler does its own check based on
+// Record routes return policyOpen, the handler does its own check based on
 // the target collection's per-action rule.
 func (s *Server) routePolicy(r *http.Request) policy {
 	p := r.URL.Path
@@ -160,8 +160,8 @@ func (s *Server) routePolicy(r *http.Request) policy {
 	if strings.HasPrefix(p, "/api/collections/") {
 		rest := strings.TrimPrefix(p, "/api/collections/")
 		parts := strings.SplitN(rest, "/", 3)
-		// /api/collections/<name>          — admin for PATCH/DELETE, authed for GET
-		// /api/collections/<name>/records* — handler-level rule check (open here)
+		// /api/collections/<name>         , admin for PATCH/DELETE, authed for GET
+		// /api/collections/<name>/records*, handler-level rule check (open here)
 		if len(parts) == 1 {
 			if m == http.MethodPatch || m == http.MethodDelete {
 				return policyAdmin
@@ -197,7 +197,7 @@ func (s *Server) routePolicy(r *http.Request) policy {
 		return policyAdmin
 	}
 
-	// /api/auth/me — any authed user.
+	// /api/auth/me, any authed user.
 	if p == "/api/auth/me" {
 		return policyAuthed
 	}

@@ -1,4 +1,4 @@
-// Theme management — light / dark / system. Persisted to localStorage.
+// Theme management, light / dark / system. Persisted to localStorage.
 // Applies to <html> via data-theme so CSS variables can switch.
 
 export type Theme = "light" | "dark" | "system";

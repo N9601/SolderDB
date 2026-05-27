@@ -26,7 +26,7 @@ The output binary lives in `build/bin/`.
 
 When you launch SolderDB for the first time, an empty database is created and you're prompted to register the first user. **That user is granted the `admin` role.** Subsequent registrations become regular `user`s.
 
-You can change roles by editing the `_users` collection directly via the admin GUI (Collections → can't see it, but the engine knows) or by writing a small CLI snippet — for v1 we don't expose user role editing in the UI.
+You can change roles by editing the `_users` collection directly via the admin GUI (Collections can't show it, but the engine knows) or by writing a small CLI snippet. For v1 we don't expose user role editing in the UI.
 
 ## Your first collection
 
@@ -35,8 +35,8 @@ In the GUI:
 1. Click **Collections** in the sidebar
 2. Click the **+** in the collections panel
 3. Name it `notes`, add fields:
-   - `title` — text, required
-   - `pinned` — bool
+   - `title` (text, required)
+   - `pinned` (bool)
 4. Save
 
 Switch to the new collection, click **+ New record**, fill in a title, hit **Insert**. You should see the row appear and the `LIVE` chip pulse copper for a moment.
@@ -105,13 +105,13 @@ SolderDB/
 ├── sstables/        Immutable sorted-string tables
 ├── files/           Uploaded file blobs
 ├── snapshots/       Created via the Snapshot button
-└── .secret          HMAC signing key (32 random bytes; do not share)
+└── .secret          HMAC signing key (32 random bytes, do not share)
 ```
 
 Back up the whole directory to back up the database. Restore by replacing it.
 
 ## Next steps
 
-- [Collections & records](./collections.md) for the full schema/validation/rule story
+- [Collections & records](./collections.md) for the full schema, validation, and rule story
 - [REST API reference](./rest-api.md) for every endpoint
 - [Engine internals](./engine.md) if you want to understand how SolderDB stores your data

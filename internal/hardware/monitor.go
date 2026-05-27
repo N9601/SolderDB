@@ -4,7 +4,7 @@
 // step aside when the user is on battery or the CPU is thermal-throttled.
 //
 // Per-OS implementations live in monitor_*.go files behind build tags.
-// All fields are optional — a value of nil/-1 means "couldn't read".
+// All fields are optional, a value of nil/-1 means "couldn't read".
 package hardware
 
 import "time"
@@ -29,13 +29,13 @@ type Status struct {
 // Thresholds expresses the rules a Monitor uses to decide whether the
 // engine should throttle background work. Zero values mean "ignore".
 type Thresholds struct {
-	// MinBatteryPct — if on battery and pct < this, throttle. 0 disables.
+	// MinBatteryPct, if on battery and pct < this, throttle. 0 disables.
 	MinBatteryPct int `json:"minBatteryPct"`
 
-	// MaxCPUTempC — if temp > this, throttle. 0 disables.
+	// MaxCPUTempC, if temp > this, throttle. 0 disables.
 	MaxCPUTempC float64 `json:"maxCpuTempC"`
 
-	// PauseOnBattery — if true, any time the machine is unplugged, throttle.
+	// PauseOnBattery, if true, any time the machine is unplugged, throttle.
 	PauseOnBattery bool `json:"pauseOnBattery"`
 }
 

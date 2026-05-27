@@ -99,7 +99,7 @@ type memEntry struct {
 
 // CompactionGate decides whether heavy disk work is allowed right now. The
 // engine consults this before each compaction. Returning false short-circuits
-// the operation with the supplied reason — surfaced in errors and the UI.
+// the operation with the supplied reason, surfaced in errors and the UI.
 type CompactionGate interface {
 	Allow() (ok bool, reason string)
 }
@@ -246,7 +246,7 @@ func (db *DB) Scan(opts ScanOptions) (ScanResult, error) {
 	}
 
 	// Apply Start (inclusive) and End (exclusive) bounds after the prefix
-	// filter — they're independent constraints, not alternatives.
+	// filter, they're independent constraints, not alternatives.
 	if opts.Start != "" {
 		i := sort.SearchStrings(all, opts.Start)
 		all = all[i:]
@@ -810,7 +810,7 @@ func (db *DB) replayWAL() error {
 			}
 		}
 
-		// Verify CRC. A mismatch on the tail record means torn write — stop here.
+		// Verify CRC. A mismatch on the tail record means torn write, stop here.
 		h := crc32.New(crcTable)
 		var hdr [1 + 4 + 4]byte
 		hdr[0] = opByte
@@ -822,7 +822,7 @@ func (db *DB) replayWAL() error {
 			_, _ = h.Write(value)
 		}
 		if h.Sum32() != want {
-			// Torn or corrupt record — stop replay, leave earlier records applied.
+			// Torn or corrupt record, stop replay, leave earlier records applied.
 			break
 		}
 
@@ -1287,7 +1287,7 @@ func writeSSTable(path string, records []sstRecord) error {
 	index := make([]idx, 0, len(records))
 
 	// Build bloom filter from live (non-tombstoned) keys + all keys; including
-	// tombstoned ones is fine — mayContain just permits seeks for them too.
+	// tombstoned ones is fine, mayContain just permits seeks for them too.
 	bloom := newBloomForN(len(records))
 
 	// Data section offsets are from file start.

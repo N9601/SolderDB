@@ -3,7 +3,7 @@
 // so they ride on top of the same engine and benefit from snapshots/compaction
 // like any other data.
 //
-// Tokens are hand-rolled HMAC-SHA256 signed payloads — no JWT library needed.
+// Tokens are hand-rolled HMAC-SHA256 signed payloads, no JWT library needed.
 // Format: base64url(payload-json).base64url(hmac-sha256(secret, payload-json))
 package auth
 
@@ -41,7 +41,7 @@ const (
 	RoleUser  Role = "user"
 )
 
-// User is the public representation — never includes the password hash.
+// User is the public representation, never includes the password hash.
 type User struct {
 	ID      string `json:"id"`
 	Email   string `json:"email"`
@@ -106,7 +106,7 @@ func (s *Service) Register(email, password string) (Session, error) {
 	if len(password) < 8 {
 		return Session{}, errors.New("password must be at least 8 characters")
 	}
-	// Cheap uniqueness check — full unique-constraint indexing is future work.
+	// Cheap uniqueness check, full unique-constraint indexing is future work.
 	if u, err := s.findByEmail(email); err == nil && u != nil {
 		return Session{}, errors.New("email already registered")
 	}
@@ -151,7 +151,7 @@ func (s *Service) Login(email, password string) (Session, error) {
 
 // ChangePassword rehashes the user's password after verifying the current one.
 // Returns the updated user (without password hash). Existing tokens stay
-// valid — they're HMAC-signed independently from the stored hash.
+// valid, they're HMAC-signed independently from the stored hash.
 func (s *Service) ChangePassword(userID, currentPassword, newPassword string) (User, error) {
 	if len(newPassword) < 8 {
 		return User{}, errors.New("new password must be at least 8 characters")
@@ -247,7 +247,7 @@ func (s *Service) userCount() (int, error) {
 }
 
 func (s *Service) findByEmail(email string) (*collections.Record, error) {
-	// Linear scan — fine for v1; secondary indexes are a future engine feature.
+	// Linear scan, fine for v1; secondary indexes are a future engine feature.
 	res, err := s.colls.ListRecords(UsersCollection, "", 10000)
 	if err != nil {
 		return nil, err

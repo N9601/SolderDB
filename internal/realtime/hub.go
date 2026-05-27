@@ -3,12 +3,12 @@
 //
 // Topic conventions:
 //
-//	coll:<name>             — every event on a collection (create/update/delete)
-//	coll:<name>:<id>        — events for a single record
-//	kv:*                    — every raw KV write
+//	coll:<name>            , every event on a collection (create/update/delete)
+//	coll:<name>:<id>       , events for a single record
+//	kv:*                   , every raw KV write
 //
 // The hub is fire-and-forget. If a subscriber's buffered channel is full,
-// the event is dropped for that subscriber only — slow consumers never
+// the event is dropped for that subscriber only, slow consumers never
 // block writers.
 package realtime
 
@@ -99,7 +99,7 @@ func (h *Hub) Publish(topic string, evt Event) {
 		select {
 		case sub.ch <- evt:
 		default:
-			// Slow consumer — drop the event for them only.
+			// Slow consumer, drop the event for them only.
 		}
 	}
 }

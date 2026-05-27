@@ -89,7 +89,7 @@ export default function CollectionsView({ onStatus }: Props) {
         es.addEventListener("update", () => onEvent("update"));
         es.addEventListener("delete", () => onEvent("delete"));
       } catch {
-        // ignore — UI keeps working without realtime
+        // ignore, UI keeps working without realtime
       }
     })();
     return () => {
@@ -360,7 +360,7 @@ function RecordsTable(props: {
   if (records.length === 0) {
     return (
       <div className="card card-pad py-12 text-center text-[12px] text-ink-400">
-        No records yet — click <strong>+ New record</strong>.
+        No records yet, click <strong>+ New record</strong>.
       </div>
     );
   }
@@ -580,7 +580,7 @@ function SchemaEditorModal(props: {
     <Modal onClose={props.onClose} title={`Edit schema · ${props.collection.name}`} wide>
       <div className="space-y-5">
         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11.5px] text-amber-800">
-          Removing a field doesn&apos;t delete data from existing records — old values remain on disk but become invisible.
+          Removing a field doesn&apos;t delete data from existing records, old values remain on disk but become invisible.
           Renaming is a remove + add.
         </div>
 
@@ -630,9 +630,9 @@ function SchemaEditorModal(props: {
         <div>
           <label className="label">Access rules</label>
           <div className="mt-1 text-[11px] text-ink-400">
-            <span className="font-semibold text-copper-700">public</span> — anyone ·{" "}
-            <span className="font-semibold text-steel-700">authed</span> — any logged-in user ·{" "}
-            <span className="font-semibold text-ink-700">admin</span> — admins only
+            <span className="font-semibold text-copper-700">public</span>, anyone ·{" "}
+            <span className="font-semibold text-steel-700">authed</span>, any logged-in user ·{" "}
+            <span className="font-semibold text-ink-700">admin</span>, admins only
           </div>
           <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-5">
             {(["list", "view", "create", "update", "delete"] as const).map((op) => (
@@ -786,7 +786,7 @@ function Modal(props: { title: string; onClose: () => void; wide?: boolean; chil
 /* ---------- helpers ---------- */
 
 function fmtDate(iso: string): string {
-  if (!iso) return "—";
+  if (!iso) return "-";
   try {
     return new Date(iso).toLocaleString();
   } catch {
@@ -795,7 +795,7 @@ function fmtDate(iso: string): string {
 }
 
 function renderCell(v: unknown, t: FieldType): string {
-  if (v == null) return "—";
+  if (v == null) return "-";
   if (t === "bool") return v ? "✓" : "✗";
   if (t === "json") return typeof v === "string" ? v : JSON.stringify(v);
   return String(v);

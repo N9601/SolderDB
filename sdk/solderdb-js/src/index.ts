@@ -169,7 +169,7 @@ export class SolderDB {
     return parsed as T;
   }
 
-  /** Builds a URL with the auth token in the query string — required for
+  /** Builds a URL with the auth token in the query string, required for
    *  EventSource and <img>/<a> tags where headers can't be set. */
   authQuery(path: string): string {
     const tok = this.store.get();

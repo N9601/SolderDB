@@ -16,7 +16,7 @@ type linuxMonitor struct{}
 func (m *linuxMonitor) Read() Status {
 	st := Status{Platform: "linux", Timestamp: nowIso(), BatteryPct: -1}
 
-	// Battery — look for the first BAT* power_supply entry.
+	// Battery, look for the first BAT* power_supply entry.
 	if entries, err := os.ReadDir("/sys/class/power_supply"); err == nil {
 		for _, e := range entries {
 			name := e.Name()
@@ -49,7 +49,7 @@ func (m *linuxMonitor) Read() Status {
 		}
 	}
 
-	// Thermal — take the hottest of all thermal zones we can read.
+	// Thermal, take the hottest of all thermal zones we can read.
 	if entries, err := os.ReadDir("/sys/class/thermal"); err == nil {
 		var hottest int = -1
 		for _, e := range entries {
