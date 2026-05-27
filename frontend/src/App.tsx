@@ -9,14 +9,20 @@ import {
   Snapshot
 } from "./wailsjs/go/bridge/DBService";
 import { bridge } from "./wailsjs/go/models";
+import { Logo } from "./components/Logo";
 
 type DBStats = bridge.Stats;
 
 type Row = {
   key: string;
   preview: string;
+  type: ValueType;
   loading: boolean;
 };
+
+type ValueType = "json" | "number" | "text" | "empty";
+
+type NavId = "dashboard" | "console" | "browser" | "snapshots" | "settings";
 
 const PAGE_SIZE = 50;
 const PREVIEW_BYTES = 80;
@@ -48,25 +54,88 @@ function tryFormatJSON(s: string): { formatted: string; ok: boolean } {
   }
 }
 
-function isJSONLike(s: string): boolean {
+function detectType(s: string): ValueType {
+  if (!s) return "empty";
   const t = s.trim();
-  if (t.length < 2) return false;
+  if (t.length === 0) return "empty";
   const first = t[0];
   const last = t[t.length - 1];
-  if (!((first === "{" && last === "}") || (first === "[" && last === "]"))) return false;
-  try {
-    JSON.parse(t);
-    return true;
-  } catch {
-    return false;
+  if ((first === "{" && last === "}") || (first === "[" && last === "]")) {
+    try {
+      JSON.parse(t);
+      return "json";
+    } catch {
+      // fall through
+    }
   }
+  if (!Number.isNaN(Number(t)) && /^-?[\d.eE+-]+$/.test(t)) return "number";
+  return "text";
 }
 
+const NAV: { id: NavId; label: string; icon: JSX.Element }[] = [
+  {
+    id: "dashboard",
+    label: "Dashboard",
+    icon: (
+      <svg className="nav-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+        <rect x="3" y="3" width="7" height="9" rx="1.5" />
+        <rect x="14" y="3" width="7" height="5" rx="1.5" />
+        <rect x="14" y="12" width="7" height="9" rx="1.5" />
+        <rect x="3" y="16" width="7" height="5" rx="1.5" />
+      </svg>
+    )
+  },
+  {
+    id: "console",
+    label: "Console",
+    icon: (
+      <svg className="nav-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+        <polyline points="4 7 9 12 4 17" />
+        <line x1="12" y1="17" x2="20" y2="17" />
+      </svg>
+    )
+  },
+  {
+    id: "browser",
+    label: "Data Browser",
+    icon: (
+      <svg className="nav-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+        <ellipse cx="12" cy="5" rx="8" ry="2.5" />
+        <path d="M4 5v6c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5V5" />
+        <path d="M4 11v6c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5v-6" />
+      </svg>
+    )
+  },
+  {
+    id: "snapshots",
+    label: "Snapshots",
+    icon: (
+      <svg className="nav-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+        <rect x="3" y="6" width="18" height="14" rx="2" />
+        <circle cx="12" cy="13" r="3.5" />
+        <path d="M8 6l2-2h4l2 2" />
+      </svg>
+    )
+  },
+  {
+    id: "settings",
+    label: "Settings",
+    icon: (
+      <svg className="nav-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+        <circle cx="12" cy="12" r="3" />
+        <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+      </svg>
+    )
+  }
+];
+
 export default function App() {
+  const [nav, setNav] = useState<NavId>("dashboard");
+
   const [key, setKey] = useState<string>("");
   const [value, setValue] = useState<string>("");
   const [readValue, setReadValue] = useState<string>("");
-  const [status, setStatus] = useState<string>("READY");
+  const [status, setStatus] = useState<string>("Ready");
   const [stats, setStats] = useState<DBStats | null>(null);
 
   const [keyPrefix, setKeyPrefix] = useState<string>("");
@@ -75,23 +144,20 @@ export default function App() {
   const [scanNextAfter, setScanNextAfter] = useState<string>("");
   const [selectedKey, setSelectedKey] = useState<string>("");
 
-  const [writeLed, setWriteLed] = useState<boolean>(false);
+  const [writePulse, setWritePulse] = useState<boolean>(false);
   const ledTimer = useRef<number | null>(null);
 
-  function flashWriteLed() {
-    setWriteLed(true);
-    if (ledTimer.current !== null) {
-      window.clearTimeout(ledTimer.current);
-    }
-    ledTimer.current = window.setTimeout(() => setWriteLed(false), 350);
+  function pulseWrite() {
+    setWritePulse(true);
+    if (ledTimer.current !== null) window.clearTimeout(ledTimer.current);
+    ledTimer.current = window.setTimeout(() => setWritePulse(false), 700);
   }
 
   async function refreshStats() {
     try {
-      const st = await GetStats();
-      setStats(st);
+      setStats(await GetStats());
     } catch (e) {
-      setStatus(`STATS ERR: ${String(e)}`);
+      setStatus(`Stats error: ${String(e)}`);
     }
   }
 
@@ -104,14 +170,22 @@ export default function App() {
       } as bridge.ScanOptions);
       const keys = res.keys ?? [];
       setScanNextAfter(res.nextAfter ?? "");
-      const initial: Row[] = keys.map((k) => ({ key: k, preview: "", loading: true }));
+      const initial: Row[] = keys.map((k) => ({ key: k, preview: "", type: "empty", loading: true }));
       setRows(initial);
-      // Fetch previews in parallel but bounded.
       const previews = await Promise.all(keys.map((k) => Get(k).catch(() => "")));
-      setRows(keys.map((k, i) => ({ key: k, preview: truncate(previews[i] ?? "", PREVIEW_BYTES), loading: false })));
-      setStatus("READY");
+      setRows(
+        keys.map((k, i) => {
+          const v = previews[i] ?? "";
+          return {
+            key: k,
+            preview: truncate(v, PREVIEW_BYTES),
+            type: detectType(v),
+            loading: false
+          };
+        })
+      );
     } catch (e) {
-      setStatus(`SCAN ERR: ${String(e)}`);
+      setStatus(`Scan error: ${String(e)}`);
     }
   }
 
@@ -135,66 +209,66 @@ export default function App() {
 
   async function onGet() {
     if (!key) {
-      setStatus("KEY REQUIRED");
+      setStatus("Key required");
       return;
     }
     try {
       const v = await Get(key);
       setReadValue(v);
-      setStatus(v ? "READ OK" : "KEY NOT FOUND");
+      setStatus(v ? "Read OK" : "Key not found");
     } catch (e) {
-      setStatus(`GET ERR: ${String(e)}`);
+      setStatus(`Get error: ${String(e)}`);
     }
   }
 
   async function onSet() {
     if (!key) {
-      setStatus("KEY REQUIRED");
+      setStatus("Key required");
       return;
     }
     try {
       await SetKV(key, value);
-      flashWriteLed();
-      setStatus(`SET ${key}`);
+      pulseWrite();
+      setStatus(`Wrote ${key}`);
       await Promise.all([refreshStats(), refreshKeys()]);
     } catch (e) {
-      setStatus(`SET ERR: ${String(e)}`);
+      setStatus(`Set error: ${String(e)}`);
     }
   }
 
   async function onDelete() {
     if (!key) {
-      setStatus("KEY REQUIRED");
+      setStatus("Key required");
       return;
     }
     try {
       await Delete(key);
-      flashWriteLed();
-      setStatus(`DEL ${key}`);
+      pulseWrite();
+      setStatus(`Deleted ${key}`);
       await Promise.all([refreshStats(), refreshKeys()]);
     } catch (e) {
-      setStatus(`DEL ERR: ${String(e)}`);
+      setStatus(`Delete error: ${String(e)}`);
     }
   }
 
   async function onCompact() {
     try {
-      setStatus("COMPACTING…");
+      setStatus("Compacting…");
       await Compact();
-      setStatus("COMPACTION DONE");
+      setStatus("Compaction complete");
       await Promise.all([refreshStats(), refreshKeys()]);
     } catch (e) {
-      setStatus(`COMPACT ERR: ${String(e)}`);
+      setStatus(`Compact error: ${String(e)}`);
     }
   }
 
   async function onSnapshot() {
     try {
-      setStatus("SNAPSHOTTING…");
+      setStatus("Creating snapshot…");
       const path = await Snapshot();
-      setStatus(`SNAPSHOT → ${path}`);
+      setStatus(`Snapshot saved → ${path}`);
     } catch (e) {
-      setStatus(`SNAPSHOT ERR: ${String(e)}`);
+      setStatus(`Snapshot error: ${String(e)}`);
     }
   }
 
@@ -202,9 +276,9 @@ export default function App() {
     const { formatted, ok } = tryFormatJSON(value);
     if (ok) {
       setValue(formatted);
-      setStatus("JSON FORMATTED");
+      setStatus("JSON formatted");
     } else {
-      setStatus("NOT VALID JSON");
+      setStatus("Not valid JSON");
     }
   }
 
@@ -222,249 +296,413 @@ export default function App() {
     })();
   }
 
+  const readType = detectType(readValue);
+  const valueType = detectType(value);
+
   return (
-    <div className="min-h-screen grid-overlay">
-      <div className="mx-auto max-w-6xl px-6 py-6">
-        <Header writeLed={writeLed} status={status} />
-
-        <section className="mt-5">
-          <PanelHeader title="Engine Telemetry" right={<span className="chip">LSM · Memtable + WAL + SSTables</span>} />
-          <div className="panel p-4">
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              <Metric label="Live Keys" value={stats ? String(stats.liveKeys) : "—"} />
-              <Metric label="Tombstones" value={stats ? String(stats.tombstones) : "—"} />
-              <Metric label="Memtable" value={stats ? formatBytes(stats.memtableBytes) : "—"} />
-              <Metric label="WAL" value={stats ? formatBytes(stats.walBytes) : "—"} />
-              <Metric label="SSTables" value={stats ? String(stats.ssTableCount) : "—"} />
-              <Metric label="Total Keys" value={stats ? String(stats.keys) : "—"} />
-              <MetricMono label="Data Dir" value={stats?.dataDir ?? "—"} />
-              <MetricMono label="WAL Path" value={stats?.walPath ?? "—"} />
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <button className="btn" onClick={() => void onCompact()}>
-                ⚙ Compact SSTables
-              </button>
-              <button className="btn" onClick={() => void onSnapshot()}>
-                ⎘ Snapshot
-              </button>
-              <button className="btn" onClick={() => void refreshStats()}>
-                ↻ Refresh
-              </button>
-            </div>
-          </div>
-        </section>
-
-        <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-5">
-          <section className="lg:col-span-2">
-            <PanelHeader title="Console" right={<span className="chip">SET · GET · DEL</span>} />
-            <div className="panel space-y-3 p-4">
-              <div>
-                <label className="label">Key</label>
-                <input
-                  value={key}
-                  onChange={(e) => setKey(e.target.value)}
-                  className="field mt-1"
-                  placeholder="e.g. user:123"
-                  spellCheck={false}
-                />
-              </div>
-              <div>
-                <div className="flex items-center justify-between">
-                  <label className="label">Value</label>
-                  {isJSONLike(value) && (
-                    <span className="chip">
-                      <span className="led" /> JSON
-                    </span>
-                  )}
-                </div>
-                <textarea
-                  value={value}
-                  onChange={(e) => setValue(e.target.value)}
-                  className="field mt-1"
-                  placeholder="JSON, text, or any string"
-                  rows={5}
-                  spellCheck={false}
-                />
-                <div className="mt-1 flex justify-end">
-                  <button className="btn" onClick={onFormatValue}>
-                    {"{ }"} Format JSON
-                  </button>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button className="btn btn-primary" onClick={() => void onSet()}>
-                  ▶ Set
-                </button>
-                <button className="btn" onClick={() => void onGet()}>
-                  ◐ Get
-                </button>
-                <button className="btn btn-danger" onClick={() => void onDelete()}>
-                  ✕ Delete
-                </button>
-              </div>
-              <div>
-                <div className="flex items-center justify-between">
-                  <label className="label">Read Result</label>
-                  {isJSONLike(readValue) && (
-                    <span className="chip">
-                      <span className="led" /> JSON
-                    </span>
-                  )}
-                </div>
-                <pre className="field mt-1 max-h-40 overflow-auto whitespace-pre-wrap">
-                  {readValue ? (isJSONLike(readValue) ? tryFormatJSON(readValue).formatted : readValue) : "—"}
-                </pre>
-              </div>
-            </div>
-          </section>
-
-          <section className="lg:col-span-3">
-            <PanelHeader
-              title="Data Browser"
-              right={
-                <span className="chip">
-                  {rows.length} {rows.length === 1 ? "key" : "keys"}
-                </span>
-              }
-            />
-            <div className="panel p-4">
-              <div className="flex flex-wrap items-end gap-2">
-                <div className="flex-1 min-w-[200px]">
-                  <label className="label">Prefix Filter</label>
-                  <input
-                    value={keyPrefix}
-                    onChange={(e) => {
-                      setKeyPrefix(e.target.value);
-                      setScanAfter("");
-                    }}
-                    className="field mt-1"
-                    placeholder="e.g. user:"
-                    spellCheck={false}
-                  />
-                </div>
-                <button
-                  className="btn"
-                  onClick={() => {
-                    setScanAfter("");
-                  }}
-                >
-                  ⤒ First
-                </button>
-                <button
-                  className="btn"
-                  disabled={!scanNextAfter}
-                  onClick={() => {
-                    if (scanNextAfter) setScanAfter(scanNextAfter);
-                  }}
-                >
-                  Next ▶
-                </button>
-              </div>
-
-              <div className="mt-3 overflow-hidden rounded-sm border border-gunmetal-700">
-                <div className="grid grid-cols-12 gap-2 border-b border-gunmetal-700 bg-gunmetal-850 px-3 py-2">
-                  <div className="label col-span-4">Key</div>
-                  <div className="label col-span-8">Value Preview</div>
-                </div>
-                <div className="max-h-[420px] overflow-auto">
-                  {rows.length === 0 ? (
-                    <div className="px-3 py-6 text-center text-sm text-silver-400">
-                      No keys match this filter.
-                    </div>
-                  ) : (
-                    rows.map((r) => {
-                      const isSelected = r.key === selectedKey;
-                      return (
-                        <button
-                          key={r.key}
-                          onClick={() => selectRow(r.key)}
-                          className={`grid w-full grid-cols-12 gap-2 border-b border-gunmetal-800 px-3 py-2 text-left transition-colors hover:bg-gunmetal-850 ${
-                            isSelected ? "bg-gunmetal-800" : ""
-                          }`}
-                        >
-                          <div className="col-span-4 truncate font-mono text-xs text-copper-300">
-                            {r.key}
-                          </div>
-                          <div className="col-span-8 truncate font-mono text-xs text-silver-200">
-                            {r.loading ? <span className="text-silver-400">…</span> : r.preview || <span className="text-silver-400">∅</span>}
-                          </div>
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-
-              <div className="mt-2 text-[10px] uppercase tracking-widest text-silver-400">
-                Page size {PAGE_SIZE} · Preview {PREVIEW_BYTES}b · Tombstones hidden
-              </div>
-            </div>
-          </section>
+    <div className="flex h-screen w-screen overflow-hidden bg-canvas-50">
+      {/* Sidebar */}
+      <aside className="sidebar flex w-[224px] flex-shrink-0 flex-col bg-gunmetal-900 text-canvas-200">
+        <div className="px-4 py-5">
+          <Logo size={28} withWordmark variant="dark" />
         </div>
+        <nav className="flex-1 px-2 py-2">
+          {NAV.map((n) => (
+            <button
+              key={n.id}
+              className={`nav-item ${nav === n.id ? "active" : ""}`}
+              onClick={() => setNav(n.id)}
+            >
+              {n.icon}
+              <span>{n.label}</span>
+            </button>
+          ))}
+        </nav>
+        <div className="border-t border-gunmetal-800 px-4 py-3">
+          <div className="flex items-center justify-between text-[10px] text-canvas-300">
+            <span className="font-mono">v0.1.0</span>
+            <span className="chip-mono inline-flex items-center gap-1.5 text-canvas-200">
+              <span className={`dot ${writePulse ? "" : "dot-idle"}`} />
+              {writePulse ? "WRITE" : "IDLE"}
+            </span>
+          </div>
+        </div>
+      </aside>
 
-        <footer className="mt-6 flex items-center justify-between text-[10px] uppercase tracking-widest text-silver-400">
-          <span>SolderDB · Local-First LSM Engine</span>
-          <span className="font-mono">v0.1.0</span>
-        </footer>
+      {/* Main */}
+      <main className="flex min-w-0 flex-1 flex-col">
+        {/* Topbar */}
+        <header className="flex h-14 items-center justify-between border-b border-canvas-200 bg-white px-6">
+          <div className="flex items-center gap-3">
+            <h1 className="text-[15px] font-semibold text-ink-900">
+              {NAV.find((n) => n.id === nav)?.label}
+            </h1>
+            <span className="chip">{status}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button className="btn-ghost btn" onClick={() => void refreshStats()}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M21 12a9 9 0 1 1-3-6.7" />
+                <path d="M21 4v5h-5" />
+              </svg>
+              Refresh
+            </button>
+            <button className="btn" onClick={() => void onSnapshot()}>
+              ⎘ Snapshot
+            </button>
+            <button className="btn btn-primary" onClick={() => void onCompact()}>
+              Compact
+            </button>
+          </div>
+        </header>
+
+        {/* Content */}
+        <div className="flex-1 overflow-auto px-6 py-6">
+          {nav === "dashboard" && (
+            <DashboardView stats={stats} writePulse={writePulse} />
+          )}
+          {nav === "console" && (
+            <ConsoleView
+              key_={key}
+              value={value}
+              readValue={readValue}
+              readType={readType}
+              valueType={valueType}
+              onChangeKey={setKey}
+              onChangeValue={setValue}
+              onGet={() => void onGet()}
+              onSet={() => void onSet()}
+              onDelete={() => void onDelete()}
+              onFormat={onFormatValue}
+            />
+          )}
+          {nav === "browser" && (
+            <BrowserView
+              rows={rows}
+              prefix={keyPrefix}
+              onChangePrefix={(s) => {
+                setKeyPrefix(s);
+                setScanAfter("");
+              }}
+              hasNext={!!scanNextAfter}
+              onFirst={() => setScanAfter("")}
+              onNext={() => scanNextAfter && setScanAfter(scanNextAfter)}
+              selectedKey={selectedKey}
+              onSelect={selectRow}
+            />
+          )}
+          {nav === "snapshots" && <SnapshotsView dataDir={stats?.dataDir ?? ""} onSnapshot={() => void onSnapshot()} />}
+          {nav === "settings" && <SettingsView stats={stats} />}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+/* ---------------------- Views ---------------------- */
+
+function DashboardView(props: { stats: DBStats | null; writePulse: boolean }) {
+  const { stats, writePulse } = props;
+  return (
+    <div className="animate-slideUp space-y-6">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <Stat label="Live Keys" value={stats ? String(stats.liveKeys) : "—"} accent={writePulse} />
+        <Stat label="Tombstones" value={stats ? String(stats.tombstones) : "—"} />
+        <Stat label="Memtable" value={stats ? formatBytes(stats.memtableBytes) : "—"} />
+        <Stat label="WAL" value={stats ? formatBytes(stats.walBytes) : "—"} />
+        <Stat label="SSTables" value={stats ? String(stats.ssTableCount) : "—"} />
+        <Stat label="Total Keys" value={stats ? String(stats.keys) : "—"} />
+        <StatMono label="Data Dir" value={stats?.dataDir ?? "—"} />
+        <StatMono label="WAL Path" value={stats?.walPath ?? "—"} />
+      </div>
+
+      <div className="card card-pad">
+        <div className="mb-3 flex items-center justify-between">
+          <div>
+            <div className="section-title">Engine Architecture</div>
+            <div className="section-sub">Log-Structured Merge Tree · built from scratch in Go</div>
+          </div>
+          <div className="flex gap-1.5">
+            <span className="chip chip-copper">Memtable</span>
+            <span className="chip chip-steel">WAL · CRC32C</span>
+            <span className="chip chip-steel">SSTables · Bloom</span>
+          </div>
+        </div>
+        <ArchDiagram />
       </div>
     </div>
   );
 }
 
-function Header(props: { writeLed: boolean; status: string }) {
+function ConsoleView(props: {
+  key_: string;
+  value: string;
+  readValue: string;
+  readType: ValueType;
+  valueType: ValueType;
+  onChangeKey: (s: string) => void;
+  onChangeValue: (s: string) => void;
+  onGet: () => void;
+  onSet: () => void;
+  onDelete: () => void;
+  onFormat: () => void;
+}) {
   return (
-    <header className="panel flex items-center justify-between gap-4 px-4 py-3">
-      <div className="flex items-center gap-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-sm border border-copper-600 bg-gunmetal-950 text-copper-400 shadow-copper-glow">
-          <span className="font-mono text-sm font-bold">⚡</span>
+    <div className="animate-slideUp grid grid-cols-1 gap-5 lg:grid-cols-2">
+      <div className="card card-pad space-y-3">
+        <div className="section-title">Write / Read</div>
+        <div>
+          <label className="label">Key</label>
+          <input
+            value={props.key_}
+            onChange={(e) => props.onChangeKey(e.target.value)}
+            className="field mt-1"
+            placeholder="e.g. user:123"
+            spellCheck={false}
+          />
         </div>
         <div>
-          <div className="font-mono text-base font-semibold tracking-wide text-silver-50">
-            SOLDER<span className="text-copper-400">DB</span>
+          <div className="flex items-center justify-between">
+            <label className="label">Value</label>
+            <TypeChip type={props.valueType} />
           </div>
-          <div className="text-[10px] uppercase tracking-widest text-silver-400">
-            Flux &amp; Iron · LSM Storage Engine
+          <textarea
+            value={props.value}
+            onChange={(e) => props.onChangeValue(e.target.value)}
+            className="field mt-1"
+            placeholder='{ "name": "hello" } or any string'
+            rows={8}
+            spellCheck={false}
+          />
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button className="btn btn-primary" onClick={props.onSet}>
+              Set
+            </button>
+            <button className="btn" onClick={props.onGet}>
+              Get
+            </button>
+            <button className="btn btn-danger" onClick={props.onDelete}>
+              Delete
+            </button>
+            <div className="ml-auto">
+              <button className="btn btn-ghost" onClick={props.onFormat}>
+                {"{ }"} Format JSON
+              </button>
+            </div>
           </div>
         </div>
       </div>
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2">
-          <span className={`led ${props.writeLed ? "" : "led-idle"}`} />
-          <span className="font-mono text-[10px] uppercase tracking-widest text-silver-300">
-            {props.writeLed ? "WRITE" : "IDLE"}
+
+      <div className="card card-pad space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="section-title">Read Result</div>
+          <TypeChip type={props.readType} />
+        </div>
+        <pre className="code-block">
+          {props.readValue
+            ? props.readType === "json"
+              ? tryFormatJSON(props.readValue).formatted
+              : props.readValue
+            : "—"}
+        </pre>
+        <div className="text-[11px] text-ink-400">
+          Click any row in the Data Browser to load it here.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BrowserView(props: {
+  rows: Row[];
+  prefix: string;
+  onChangePrefix: (s: string) => void;
+  hasNext: boolean;
+  onFirst: () => void;
+  onNext: () => void;
+  selectedKey: string;
+  onSelect: (k: string) => void;
+}) {
+  return (
+    <div className="animate-slideUp space-y-4">
+      <div className="card card-pad">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex-1 min-w-[200px]">
+            <input
+              value={props.prefix}
+              onChange={(e) => props.onChangePrefix(e.target.value)}
+              className="field"
+              placeholder="Filter by key prefix (e.g. user:)"
+              spellCheck={false}
+            />
+          </div>
+          <button className="btn" onClick={props.onFirst}>
+            First
+          </button>
+          <button className="btn" disabled={!props.hasNext} onClick={props.onNext}>
+            Next →
+          </button>
+          <span className="chip">
+            {props.rows.length} {props.rows.length === 1 ? "key" : "keys"}
           </span>
         </div>
-        <div className="chip">{props.status}</div>
       </div>
-    </header>
-  );
-}
 
-function PanelHeader(props: { title: string; right?: React.ReactNode }) {
-  return (
-    <div className="mb-2 flex items-center justify-between">
-      <h2 className="font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-silver-200">
-        ▍ {props.title}
-      </h2>
-      {props.right ?? null}
+      <div className="card overflow-hidden">
+        <div className="t-header">
+          <div></div>
+          <div>Key</div>
+          <div>Value Preview</div>
+          <div className="text-right">Type</div>
+        </div>
+        <div>
+          {props.rows.length === 0 ? (
+            <div className="px-6 py-10 text-center text-sm text-ink-400">
+              No keys match this filter.
+            </div>
+          ) : (
+            props.rows.map((r) => (
+              <div
+                key={r.key}
+                className={`t-row ${r.key === props.selectedKey ? "selected" : ""}`}
+                onClick={() => props.onSelect(r.key)}
+              >
+                <div>
+                  <span className={`dot ${r.key === props.selectedKey ? "" : "dot-idle"}`} />
+                </div>
+                <div className="t-key truncate">{r.key}</div>
+                <div className="t-preview truncate">
+                  {r.loading ? <span className="text-ink-300">…</span> : r.preview || <span className="text-ink-300">∅</span>}
+                </div>
+                <div className="t-type">
+                  <TypeChip type={r.type} compact />
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
     </div>
   );
 }
 
-function Metric(props: { label: string; value: string }) {
+function SnapshotsView(props: { dataDir: string; onSnapshot: () => void }) {
   return (
-    <div className="rounded-sm border border-gunmetal-700 bg-gunmetal-950 px-3 py-2">
-      <div className="label">{props.label}</div>
-      <div className="metric-value mt-1">{props.value}</div>
+    <div className="animate-slideUp space-y-4">
+      <div className="card card-pad">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="section-title">Snapshots</div>
+            <div className="section-sub">
+              A snapshot is a consistent copy of the WAL + every SSTable, written to a timestamped folder.
+            </div>
+          </div>
+          <button className="btn btn-primary" onClick={props.onSnapshot}>
+            ⎘ Create Snapshot
+          </button>
+        </div>
+        <div className="mt-4 rounded-lg border border-canvas-200 bg-canvas-100 p-4">
+          <div className="label mb-1">Snapshots Folder</div>
+          <div className="font-mono text-[12px] text-ink-700 break-all">
+            {props.dataDir ? `${props.dataDir}\\snapshots\\<timestamp>\\` : "—"}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
-function MetricMono(props: { label: string; value: string }) {
+function SettingsView(props: { stats: DBStats | null }) {
   return (
-    <div className="rounded-sm border border-gunmetal-700 bg-gunmetal-950 px-3 py-2">
+    <div className="animate-slideUp space-y-4">
+      <div className="card card-pad">
+        <div className="section-title">Engine</div>
+        <div className="section-sub">Read-only configuration · runtime stats</div>
+        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+          <KV label="Data Directory" value={props.stats?.dataDir ?? "—"} mono />
+          <KV label="WAL Path" value={props.stats?.walPath ?? "—"} mono />
+          <KV label="Memtable Bytes" value={props.stats ? formatBytes(props.stats.memtableBytes) : "—"} />
+          <KV label="WAL Bytes" value={props.stats ? formatBytes(props.stats.walBytes) : "—"} />
+          <KV label="SSTable Count" value={String(props.stats?.ssTableCount ?? "—")} />
+          <KV label="Total Keys (incl. tombstones)" value={String(props.stats?.keys ?? "—")} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------- Small components ---------------------- */
+
+function Stat(props: { label: string; value: string; accent?: boolean }) {
+  return (
+    <div className={`stat ${props.accent ? "animate-pulseCopper" : ""}`}>
+      <div className="stat-label">{props.label}</div>
+      <div className="stat-value">{props.value}</div>
+    </div>
+  );
+}
+
+function StatMono(props: { label: string; value: string }) {
+  return (
+    <div className="stat">
+      <div className="stat-label">{props.label}</div>
+      <div className="stat-value-sm">{props.value}</div>
+    </div>
+  );
+}
+
+function KV(props: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="rounded-lg border border-canvas-200 bg-canvas-100 px-3 py-2">
       <div className="label">{props.label}</div>
-      <div className="metric-value-mono mt-1">{props.value}</div>
+      <div className={`mt-1 text-[13px] text-ink-900 break-all ${props.mono ? "font-mono" : ""}`}>
+        {props.value}
+      </div>
+    </div>
+  );
+}
+
+function TypeChip(props: { type: ValueType; compact?: boolean }) {
+  const map: Record<ValueType, { label: string; cls: string }> = {
+    json: { label: "JSON", cls: "chip-copper" },
+    number: { label: "NUM", cls: "chip-steel" },
+    text: { label: "TEXT", cls: "chip" },
+    empty: { label: "—", cls: "chip" }
+  };
+  const { label, cls } = map[props.type];
+  if (props.compact) {
+    return <span className={`chip ${cls} chip-mono`}>{label}</span>;
+  }
+  return <span className={`chip ${cls} chip-mono`}>{label}</span>;
+}
+
+function ArchDiagram() {
+  return (
+    <div className="grid grid-cols-3 gap-3">
+      <div className="rounded-lg border border-copper-100 bg-copper-50 p-4">
+        <div className="text-[11px] font-semibold uppercase tracking-wide text-copper-700">
+          Memtable
+        </div>
+        <div className="mt-1 text-[12px] text-copper-700">
+          In-memory map, RWMutex-protected. Writes land here first.
+        </div>
+      </div>
+      <div className="rounded-lg border border-steel-100 bg-steel-100/50 p-4">
+        <div className="text-[11px] font-semibold uppercase tracking-wide text-steel-700">
+          WAL
+        </div>
+        <div className="mt-1 text-[12px] text-steel-700">
+          Append-only binary log. CRC32C per record. Replayed on startup.
+        </div>
+      </div>
+      <div className="rounded-lg border border-canvas-200 bg-canvas-100 p-4">
+        <div className="text-[11px] font-semibold uppercase tracking-wide text-ink-500">
+          SSTables
+        </div>
+        <div className="mt-1 text-[12px] text-ink-500">
+          Sorted, immutable. Bloom filter per file. Flushed at 1 MB, compacted on demand.
+        </div>
+      </div>
     </div>
   );
 }
