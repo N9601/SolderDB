@@ -3,6 +3,7 @@ import {
   Compact,
   Delete,
   Get,
+  GetAPIAddr,
   GetStats,
   Scan,
   Set as SetKV,
@@ -158,6 +159,7 @@ export default function App() {
   const [selectedKey, setSelectedKey] = useState<string>("");
 
   const [writePulse, setWritePulse] = useState<boolean>(false);
+  const [apiAddr, setApiAddr] = useState<string>("");
   const ledTimer = useRef<number | null>(null);
 
   function pulseWrite() {
@@ -201,6 +203,16 @@ export default function App() {
       setStatus(`Scan error: ${String(e)}`);
     }
   }
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        setApiAddr(await GetAPIAddr());
+      } catch {
+        // ignore
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     void refreshStats();
@@ -351,6 +363,17 @@ export default function App() {
               {NAV.find((n) => n.id === nav)?.label}
             </h1>
             <span className="chip">{status}</span>
+            {apiAddr && (
+              <a
+                href={apiAddr + "/api/health"}
+                target="_blank"
+                rel="noreferrer"
+                className="chip chip-copper chip-mono hover:underline"
+                title="Local REST API — click for health check"
+              >
+                ⟁ API · {apiAddr.replace(/^https?:\/\//, "")}
+              </a>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <button className="btn-ghost btn" onClick={() => void refreshStats()}>
@@ -406,7 +429,7 @@ export default function App() {
             />
           )}
           {nav === "snapshots" && <SnapshotsView dataDir={stats?.dataDir ?? ""} onSnapshot={() => void onSnapshot()} />}
-          {nav === "settings" && <SettingsView stats={stats} />}
+          {nav === "settings" && <SettingsView stats={stats} apiAddr={apiAddr} />}
         </div>
       </main>
     </div>
@@ -626,9 +649,53 @@ function SnapshotsView(props: { dataDir: string; onSnapshot: () => void }) {
   );
 }
 
-function SettingsView(props: { stats: DBStats | null }) {
+function SettingsView(props: { stats: DBStats | null; apiAddr: string }) {
   return (
     <div className="animate-slideUp space-y-4">
+      <div className="card card-pad">
+        <div className="section-title">REST API</div>
+        <div className="section-sub">Local HTTP server · everything the UI can do is callable from any client.</div>
+        <div className="mt-4 space-y-3">
+          <KV label="Base URL" value={props.apiAddr || "(not running)"} mono />
+          <details className="rounded-lg border border-canvas-200 bg-canvas-100 p-3 text-[12px]">
+            <summary className="cursor-pointer font-medium text-ink-900">Endpoint reference</summary>
+            <pre className="mt-3 font-mono text-[11.5px] leading-relaxed text-ink-700">
+{`GET    /api/health
+GET    /api/stats
+
+GET    /api/collections
+POST   /api/collections                  { name, fields:[{name,type,required}] }
+GET    /api/collections/:name
+PATCH  /api/collections/:name            { fields:[...] }
+DELETE /api/collections/:name
+
+GET    /api/collections/:name/records?after=&limit=
+POST   /api/collections/:name/records    { ...fields }
+GET    /api/collections/:name/records/:id
+PATCH  /api/collections/:name/records/:id { ...partial }
+DELETE /api/collections/:name/records/:id
+
+GET    /api/kv/:key
+PUT    /api/kv/:key                      { value }
+DELETE /api/kv/:key`}
+            </pre>
+          </details>
+          {props.apiAddr && (
+            <div className="rounded-lg border border-canvas-200 bg-canvas-100 p-3 text-[12px]">
+              <div className="label">Try it</div>
+              <pre className="mt-2 font-mono text-[11.5px] text-ink-700">
+{`curl ${props.apiAddr}/api/health
+curl -X POST ${props.apiAddr}/api/collections \\
+  -H "Content-Type: application/json" \\
+  -d '{"name":"notes","fields":[{"name":"title","type":"text","required":true}]}'
+curl -X POST ${props.apiAddr}/api/collections/notes/records \\
+  -H "Content-Type: application/json" -d '{"title":"hello from curl"}'`}
+              </pre>
+            </div>
+          )}
+        </div>
+      </div>
+
       <div className="card card-pad">
         <div className="section-title">Engine</div>
         <div className="section-sub">Read-only configuration · runtime stats</div>

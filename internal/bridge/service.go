@@ -7,7 +7,18 @@ import (
 )
 
 type DBService struct {
-	db *engine.DB
+	db      *engine.DB
+	apiAddr string
+}
+
+// SetAPIAddr is called by main once the local REST API has bound a port,
+// so the UI can display the address to users without hardcoding it.
+func (s *DBService) SetAPIAddr(addr string) {
+	s.apiAddr = addr
+}
+
+func (s *DBService) GetAPIAddr() string {
+	return s.apiAddr
 }
 
 type Stats struct {

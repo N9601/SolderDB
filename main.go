@@ -4,8 +4,11 @@ import (
 	"context"
 	"embed"
 	"log"
+	"time"
 
+	"solderdb/internal/api"
 	"solderdb/internal/bridge"
+	"solderdb/internal/collections"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -18,6 +21,7 @@ var assets embed.FS
 type App struct {
 	ctx context.Context
 	svc *bridge.DBService
+	api *api.Server
 }
 
 func NewApp() *App {
@@ -29,6 +33,11 @@ func (a *App) startup(ctx context.Context) {
 }
 
 func (a *App) shutdown(ctx context.Context) {
+	if a.api != nil {
+		stopCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		_ = a.api.Stop(stopCtx)
+		cancel()
+	}
 	if a.svc != nil {
 		_ = a.svc.Close()
 	}
@@ -43,6 +52,20 @@ func main() {
 	}
 	app.svc = svc
 	colls := bridge.NewCollectionsService(svc.Engine())
+
+	// Start the local REST API on 127.0.0.1:8787 so SDKs/CLIs/curl can hit it.
+	// AllowOrigin "*" is fine because we only listen on loopback.
+	apiSrv := api.New(svc.Engine(), collections.New(svc.Engine()), api.Config{
+		Addr:        "127.0.0.1:8787",
+		AllowOrigin: "*",
+	})
+	if err := apiSrv.Start(); err != nil {
+		log.Printf("api start failed: %v", err)
+	} else {
+		log.Printf("REST API listening on http://%s", apiSrv.Addr())
+		app.api = apiSrv
+		svc.SetAPIAddr("http://" + apiSrv.Addr())
+	}
 
 	if err := wails.Run(&options.App{
 		Title:  "SolderDB",
