@@ -25,6 +25,7 @@ import { getToken, setToken } from "./lib/apiFetch";
 import { ToastProvider, useStatusToast, useToast } from "./components/Toast";
 import { CommandPalette, type CommandItem } from "./components/CommandPalette";
 import { CountUp } from "./components/CountUp";
+import { StatSkeleton } from "./components/Skeleton";
 
 type DBStats = bridge.Stats;
 
@@ -252,10 +253,20 @@ export default function App() {
   );
 }
 
+const SIDEBAR_COLLAPSED_KEY = "solderdb.sidebar.collapsed";
+
 function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
   const [nav, setNav] = useState<NavId>("dashboard");
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+  });
   const toast = useToast();
+
+  function setSidebar(c: boolean) {
+    setSidebarCollapsed(c);
+    window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, c ? "1" : "0");
+  }
 
   const [key, setKey] = useState<string>("");
   const [value, setValue] = useState<string>("");
@@ -276,6 +287,42 @@ function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
   const [hw, setHw] = useState<bridgeNS.HardwareStatus | null>(null);
 
   useStatusToast(status);
+
+  // G+digit nav shortcut — type "g" then a number key within 1.5s.
+  useEffect(() => {
+    let armed = false;
+    let timer: number | null = null;
+    function disarm() {
+      armed = false;
+      if (timer !== null) {
+        window.clearTimeout(timer);
+        timer = null;
+      }
+    }
+    function onKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+      if (target && target.isContentEditable) return;
+      if (!armed && e.key.toLowerCase() === "g") {
+        armed = true;
+        timer = window.setTimeout(disarm, 1500);
+        return;
+      }
+      if (armed) {
+        const n = parseInt(e.key, 10);
+        if (!Number.isNaN(n) && n >= 1 && n <= NAV.length) {
+          const target = NAV[n - 1];
+          if (target) setNav(target.id);
+        }
+        disarm();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      disarm();
+    };
+  }, []);
 
   const commands: CommandItem[] = [
     ...NAV.map((n, i) => ({
@@ -490,50 +537,101 @@ function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-canvas-50">
       {/* Sidebar */}
-      <aside className="sidebar flex w-[224px] flex-shrink-0 flex-col bg-gunmetal-900 text-canvas-200">
-        <div className="px-4 py-5">
-          <Logo size={28} withWordmark variant="dark" />
+      <aside
+        className={`sidebar flex flex-shrink-0 flex-col bg-gunmetal-900 text-canvas-200 transition-[width] duration-200 ease-out ${
+          sidebarCollapsed ? "w-[64px]" : "w-[228px]"
+        }`}
+      >
+        <div className={`flex items-center ${sidebarCollapsed ? "justify-center px-2" : "px-4"} py-5`}>
+          {sidebarCollapsed ? (
+            <Logo size={26} variant="dark" />
+          ) : (
+            <Logo size={28} withWordmark variant="dark" />
+          )}
         </div>
         <nav className="flex-1 px-2 py-2">
-          {NAV.map((n) => (
+          {NAV.map((n, i) => (
             <button
               key={n.id}
-              className={`nav-item ${nav === n.id ? "active" : ""}`}
+              className={`nav-item group ${nav === n.id ? "active" : ""} ${sidebarCollapsed ? "justify-center" : ""}`}
               onClick={() => setNav(n.id)}
+              title={sidebarCollapsed ? `${n.label} · G then ${i + 1}` : undefined}
             >
               {n.icon}
-              <span>{n.label}</span>
+              {!sidebarCollapsed && (
+                <>
+                  <span className="flex-1">{n.label}</span>
+                  {i < 9 && (
+                    <span className="font-mono text-[9.5px] text-canvas-300 opacity-0 transition-opacity group-hover:opacity-100">
+                      G {i + 1}
+                    </span>
+                  )}
+                </>
+              )}
             </button>
           ))}
         </nav>
-        <div className="border-t border-gunmetal-800 px-3 py-3">
-          <div className="mb-2 flex items-center gap-2 rounded-md bg-gunmetal-850 px-2.5 py-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-copper-500 text-[11px] font-semibold text-white">
-              {props.user.email.charAt(0).toUpperCase()}
+
+        <div className="border-t border-gunmetal-800">
+          {!sidebarCollapsed ? (
+            <div className="px-3 py-3">
+              <div className="mb-2 flex items-center gap-2 rounded-md bg-gunmetal-850 px-2.5 py-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-copper-500 text-[11px] font-semibold text-white">
+                  {props.user.email.charAt(0).toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[12px] font-medium text-white">{props.user.email}</div>
+                  <div className="text-[10px] uppercase tracking-wider text-canvas-300">{props.user.role}</div>
+                </div>
+                <button
+                  className="text-canvas-300 hover:text-white"
+                  onClick={props.onSignOut}
+                  title="Sign out"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                    <path d="M16 17l5-5-5-5" />
+                    <path d="M21 12H9" />
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                  </svg>
+                </button>
+              </div>
+              <div className="flex items-center justify-between text-[10px] text-canvas-300">
+                <span className="font-mono">v0.3.0</span>
+                <span className="chip-mono inline-flex items-center gap-1.5 text-canvas-200">
+                  <span className={`dot ${writePulse ? "" : "dot-idle"}`} />
+                  {writePulse ? "WRITE" : "IDLE"}
+                </span>
+              </div>
+              <button
+                onClick={() => setSidebar(true)}
+                className="mt-3 flex w-full items-center justify-center gap-1 rounded-md border border-gunmetal-700 bg-transparent px-2 py-1.5 text-[10.5px] uppercase tracking-wider text-canvas-300 transition-colors hover:bg-gunmetal-800 hover:text-white"
+                title="Collapse sidebar"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="15 18 9 12 15 6" />
+                </svg>
+                Collapse
+              </button>
             </div>
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-[12px] font-medium text-white">{props.user.email}</div>
-              <div className="text-[10px] uppercase tracking-wider text-canvas-300">{props.user.role}</div>
+          ) : (
+            <div className="flex flex-col items-center gap-3 px-2 py-3">
+              <div
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-copper-500 text-[11px] font-semibold text-white"
+                title={`${props.user.email} · ${props.user.role}`}
+              >
+                {props.user.email.charAt(0).toUpperCase()}
+              </div>
+              <button
+                onClick={() => setSidebar(false)}
+                className="text-canvas-300 transition-colors hover:text-white"
+                title="Expand sidebar"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
+              </button>
             </div>
-            <button
-              className="text-canvas-300 hover:text-white"
-              onClick={props.onSignOut}
-              title="Sign out"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M16 17l5-5-5-5" />
-                <path d="M21 12H9" />
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-              </svg>
-            </button>
-          </div>
-          <div className="flex items-center justify-between text-[10px] text-canvas-300">
-            <span className="font-mono">v0.3.0</span>
-            <span className="chip-mono inline-flex items-center gap-1.5 text-canvas-200">
-              <span className={`dot ${writePulse ? "" : "dot-idle"}`} />
-              {writePulse ? "WRITE" : "IDLE"}
-            </span>
-          </div>
+          )}
         </div>
       </aside>
 
@@ -597,7 +695,7 @@ function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
         </header>
 
         {/* Content */}
-        <div className="flex-1 overflow-auto px-6 py-6">
+        <div key={nav} className="page-enter flex-1 overflow-auto px-6 py-6">
           {nav === "dashboard" && (
             <DashboardView stats={stats} writePulse={writePulse} hw={hw} />
           )}
@@ -663,14 +761,20 @@ function DashboardView(props: { stats: DBStats | null; writePulse: boolean; hw: 
   return (
     <div className="animate-slideUp space-y-6">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <NumStat label="Live Keys" value={stats?.liveKeys ?? 0} accent={writePulse} />
-        <NumStat label="Tombstones" value={stats?.tombstones ?? 0} />
-        <ByteStat label="Memtable" value={stats?.memtableBytes ?? 0} />
-        <ByteStat label="WAL" value={stats?.walBytes ?? 0} />
-        <NumStat label="SSTables" value={stats?.ssTableCount ?? 0} />
-        <NumStat label="Total Keys" value={stats?.keys ?? 0} />
-        <StatMono label="Data Dir" value={stats?.dataDir ?? "—"} />
-        <StatMono label="WAL Path" value={stats?.walPath ?? "—"} />
+        {!stats ? (
+          Array.from({ length: 8 }).map((_, i) => <StatSkeleton key={i} />)
+        ) : (
+          <>
+            <NumStat label="Live Keys" value={stats.liveKeys} accent={writePulse} />
+            <NumStat label="Tombstones" value={stats.tombstones} />
+            <ByteStat label="Memtable" value={stats.memtableBytes} />
+            <ByteStat label="WAL" value={stats.walBytes} />
+            <NumStat label="SSTables" value={stats.ssTableCount} />
+            <NumStat label="Total Keys" value={stats.keys} />
+            <StatMono label="Data Dir" value={stats.dataDir} />
+            <StatMono label="WAL Path" value={stats.walPath} />
+          </>
+        )}
       </div>
 
       {hw && <HardwareCard hw={hw} />}

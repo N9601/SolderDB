@@ -269,13 +269,21 @@ export default function CollectionsView({ onStatus }: Props) {
 
 function EmptyHero({ onCreate }: { onCreate: () => void }) {
   return (
-    <div className="card card-pad flex flex-col items-center py-16">
-      <div className="text-[15px] font-semibold text-ink-900">Pick a collection</div>
-      <div className="mt-1 text-[12px] text-ink-400">
-        Collections give your KV store typed records, schemas, and validation.
+    <div className="card empty-hero">
+      <div className="empty-hero-icon">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+          <rect x="3" y="4" width="7" height="7" rx="1.5" />
+          <rect x="14" y="4" width="7" height="7" rx="1.5" />
+          <rect x="3" y="13" width="7" height="7" rx="1.5" />
+          <rect x="14" y="13" width="7" height="7" rx="1.5" />
+        </svg>
+      </div>
+      <div className="text-[16px] font-semibold text-ink-900">No collection selected</div>
+      <div className="mt-1 max-w-[360px] text-[12.5px] text-ink-400">
+        Collections give your KV store typed records, schemas, validation, and per-operation access rules.
       </div>
       <button className="btn btn-primary mt-5" onClick={onCreate}>
-        + New collection
+        + Create your first collection
       </button>
     </div>
   );
