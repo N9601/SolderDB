@@ -100,6 +100,18 @@ export default function App() {
     setStatus("Deleted (tombstone)");
   }
 
+  async function onCompact() {
+    if (!api) {
+      setStatus("Wails bindings not available yet. Run `wails dev` to generate bindings.");
+      return;
+    }
+    setStatus("Compacting…");
+    await api.Compact();
+    await refreshStats();
+    await refreshKeys();
+    setStatus("Compaction complete");
+  }
+
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
       <div className="mx-auto max-w-5xl px-6 py-8">
@@ -118,9 +130,18 @@ export default function App() {
             <Metric label="Tombstones" value={stats ? String(stats.tombstones) : "—"} />
             <Metric label="Memtable" value={stats ? formatBytes(stats.memtableBytes) : "—"} />
             <Metric label="WAL size" value={stats ? formatBytes(stats.walBytes) : "—"} />
+            <Metric label="SSTables" value={stats ? String(stats.ssTableCount) : "—"} />
             <Metric label="Data dir" value={stats ? stats.dataDir : "—"} />
             <Metric label="WAL path" value={stats ? stats.walPath : "—"} />
             <Metric label="Status" value={status || "—"} />
+          </div>
+          <div className="mt-3">
+            <button
+              onClick={() => void onCompact()}
+              className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm"
+            >
+              Compact SSTables
+            </button>
           </div>
         </section>
 

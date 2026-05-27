@@ -312,6 +312,68 @@ func (db *DB) Delete(key string) error {
 	return nil
 }
 
+// Compact merges all current SSTables into a single new SSTable (newest-wins).
+// This reduces the number of files and improves read performance.
+func (db *DB) Compact() error {
+	db.mu.RLock()
+	tables := append([]*sstable(nil), db.sstables...)
+	db.mu.RUnlock()
+
+	if len(tables) <= 1 {
+		return nil
+	}
+
+	merged := make(map[string]sstRecord, 1024)
+
+	// Oldest -> newest so newer records overwrite.
+	for i := 0; i < len(tables); i++ {
+		recs, err := tables[i].readAll()
+		if err != nil {
+			return err
+		}
+		for _, r := range recs {
+			merged[r.key] = r
+		}
+	}
+
+	out := make([]sstRecord, 0, len(merged))
+	for _, r := range merged {
+		out = append(out, r)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].key < out[j].key })
+
+	ts := time.Now().UTC().UnixNano()
+	filename := "sst_compact_" + strconv.FormatInt(ts, 10) + ".sst"
+	newPath := filepath.Join(db.sstDir, filename)
+	if err := writeSSTable(newPath, out); err != nil {
+		return err
+	}
+
+	newTable, err := openSSTable(newPath)
+	if err != nil {
+		return err
+	}
+
+	db.mu.Lock()
+	oldPaths := make([]string, 0, len(db.sstables))
+	for _, t := range db.sstables {
+		oldPaths = append(oldPaths, t.path)
+	}
+	db.sstables = []*sstable{newTable}
+	db.mu.Unlock()
+
+	// Best-effort delete old SSTables. If deletion fails (e.g., antivirus lock),
+	// the new table is still active and old files can be cleaned later.
+	for _, p := range oldPaths {
+		if p == newPath {
+			continue
+		}
+		_ = os.Remove(p)
+	}
+
+	return nil
+}
+
 // WAL record format (binary, little-endian):
 // [1 byte opcode][4 bytes keyLen][4 bytes valLen][key bytes][value bytes]
 func (db *DB) appendWAL(op opCode, key, value string) error {
@@ -554,6 +616,84 @@ func openSSTable(path string) (*sstable, error) {
 	}
 
 	return &sstable{path: path, keys: keys, offsets: offsets}, nil
+}
+
+func (t *sstable) readAll() ([]sstRecord, error) {
+	f, err := os.Open(t.path)
+	if err != nil {
+		return nil, fmt.Errorf("open sstable: %w", err)
+	}
+	defer f.Close()
+
+	fi, err := f.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("stat sstable: %w", err)
+	}
+
+	// Read footer to learn indexOffset.
+	if _, err := f.Seek(fi.Size()-int64(8+8), io.SeekStart); err != nil {
+		return nil, fmt.Errorf("seek footer: %w", err)
+	}
+	var footer [16]byte
+	if _, err := io.ReadFull(f, footer[:]); err != nil {
+		return nil, fmt.Errorf("read footer: %w", err)
+	}
+	indexOffset := binary.LittleEndian.Uint64(footer[0:8])
+	if string(footer[8:16]) != sstFooterMagic {
+		return nil, fmt.Errorf("sstable bad footer magic: %s", t.path)
+	}
+
+	// Seek to start of data section (after header).
+	dataStart := int64(len(sstMagic) + 4 + 4)
+	if _, err := f.Seek(dataStart, io.SeekStart); err != nil {
+		return nil, fmt.Errorf("seek data: %w", err)
+	}
+
+	r := bufio.NewReaderSize(f, 64*1024)
+	var out []sstRecord
+	bytesRead := uint64(dataStart)
+
+	for bytesRead < indexOffset {
+		tomb, err := r.ReadByte()
+		if err != nil {
+			return nil, fmt.Errorf("read record tomb: %w", err)
+		}
+		bytesRead += 1
+
+		var lens [8]byte
+		if _, err := io.ReadFull(r, lens[:]); err != nil {
+			return nil, fmt.Errorf("read record lens: %w", err)
+		}
+		bytesRead += 8
+
+		keyLen := binary.LittleEndian.Uint32(lens[0:4])
+		valLen := binary.LittleEndian.Uint32(lens[4:8])
+		if keyLen == 0 || keyLen > 16*1024*1024 || valLen > 64*1024*1024 {
+			return nil, fmt.Errorf("sstable invalid record sizes: %s", t.path)
+		}
+
+		kb := make([]byte, keyLen)
+		if _, err := io.ReadFull(r, kb); err != nil {
+			return nil, fmt.Errorf("read record key: %w", err)
+		}
+		bytesRead += uint64(keyLen)
+
+		vb := make([]byte, valLen)
+		if valLen > 0 {
+			if _, err := io.ReadFull(r, vb); err != nil {
+				return nil, fmt.Errorf("read record value: %w", err)
+			}
+			bytesRead += uint64(valLen)
+		}
+
+		out = append(out, sstRecord{
+			key:     string(kb),
+			value:   string(vb),
+			deleted: tomb == 1,
+		})
+	}
+
+	return out, nil
 }
 
 func (db *DB) getFromSSTables(key string) (string, bool) {

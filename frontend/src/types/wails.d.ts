@@ -6,6 +6,7 @@ export type DBStats = {
   liveKeys: number;
   tombstones: number;
   memtableBytes: number;
+  ssTableCount: number;
 };
 
 export type DBServiceApi = {
@@ -14,6 +15,7 @@ export type DBServiceApi = {
   Delete(key: string): Promise<void>;
   GetStats(): Promise<DBStats>;
   ListKeys(opts: { prefix: string; limit: number }): Promise<string[]>;
+  Compact(): Promise<void>;
 };
 
 declare global {

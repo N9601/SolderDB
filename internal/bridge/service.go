@@ -18,6 +18,7 @@ type Stats struct {
 	LiveKeys      int    `json:"liveKeys"`
 	Tombstones    int    `json:"tombstones"`
 	MemtableBytes int64  `json:"memtableBytes"`
+	SSTableCount  int    `json:"ssTableCount"`
 }
 
 type ListKeysOptions struct {
@@ -81,6 +82,7 @@ func (s *DBService) GetStats() (Stats, error) {
 		LiveKeys:      st.LiveKeys,
 		Tombstones:    st.Tombstones,
 		MemtableBytes: st.MemtableBytes,
+		SSTableCount:  st.SSTableCount,
 	}, nil
 }
 
@@ -92,4 +94,11 @@ func (s *DBService) ListKeys(opts ListKeysOptions) ([]string, error) {
 		Prefix: opts.Prefix,
 		Limit:  opts.Limit,
 	})
+}
+
+func (s *DBService) Compact() error {
+	if s.db == nil {
+		return fmt.Errorf("db not initialized")
+	}
+	return s.db.Compact()
 }

@@ -3,6 +3,7 @@ package engine
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -106,7 +107,43 @@ func TestListKeysMergesMemtableAndSSTables(t *testing.T) {
 	}
 	if err := db.Delete("alpha"); err != nil {
 		t.Fatalf("del: %v", err)
+}
+
+func TestCompactionReducesSSTableCount(t *testing.T) {
+	dir := t.TempDir()
+	db, err := Open(Options{DataDir: dir, FlushThresholdBytes: 64})
+	if err != nil {
+		t.Fatalf("open: %v", err)
 	}
+	defer func() { _ = db.Close() }()
+
+	// Create multiple SSTables by forcing flushes.
+	for i := 0; i < 3; i++ {
+		if err := db.Set("k"+strconv.Itoa(i), strings.Repeat("x", 200)); err != nil {
+			t.Fatalf("set: %v", err)
+		}
+	}
+
+	st1, err := db.Stats()
+	if err != nil {
+		t.Fatalf("stats: %v", err)
+	}
+	if st1.SSTableCount < 2 {
+		t.Fatalf("expected multiple sstables before compaction, got %d", st1.SSTableCount)
+	}
+
+	if err := db.Compact(); err != nil {
+		t.Fatalf("compact: %v", err)
+	}
+
+	st2, err := db.Stats()
+	if err != nil {
+		t.Fatalf("stats2: %v", err)
+	}
+	if st2.SSTableCount != 1 {
+		t.Fatalf("expected 1 sstable after compaction, got %d", st2.SSTableCount)
+	}
+}
 
 	keys, err := db.ListKeys(ListKeysOptions{})
 	if err != nil {
