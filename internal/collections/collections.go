@@ -44,11 +44,44 @@ type Field struct {
 	Unique   bool      `json:"unique,omitempty"`
 }
 
+// Rule controls who can perform an operation on a collection.
+//
+//	"public"  — anyone, no auth required
+//	"authed"  — any signed-in user
+//	"admin"   — only role=admin
+//
+// Empty string is treated as "authed" so older collections keep working.
+type Rule string
+
+const (
+	RulePublic Rule = "public"
+	RuleAuthed Rule = "authed"
+	RuleAdmin  Rule = "admin"
+)
+
+func (r Rule) Normalize() Rule {
+	switch r {
+	case RulePublic, RuleAuthed, RuleAdmin:
+		return r
+	default:
+		return RuleAuthed
+	}
+}
+
 type CollectionMeta struct {
-	Name    string  `json:"name"`
-	Fields  []Field `json:"fields"`
-	Created string  `json:"created"`
-	Updated string  `json:"updated"`
+	Name   string  `json:"name"`
+	Fields []Field `json:"fields"`
+
+	// Access rules. Empty values default to "authed". The five rules cover
+	// every record operation; schema mutations stay admin-only regardless.
+	ListRule   Rule `json:"listRule,omitempty"`
+	ViewRule   Rule `json:"viewRule,omitempty"`
+	CreateRule Rule `json:"createRule,omitempty"`
+	UpdateRule Rule `json:"updateRule,omitempty"`
+	DeleteRule Rule `json:"deleteRule,omitempty"`
+
+	Created string `json:"created"`
+	Updated string `json:"updated"`
 }
 
 type Record struct {
@@ -131,13 +164,21 @@ func (s *Service) CreateCollection(meta CollectionMeta) (CollectionMeta, error) 
 	return meta, nil
 }
 
-func (s *Service) UpdateCollection(name string, fields []Field) (CollectionMeta, error) {
+// CollectionPatch carries optional changes to an existing collection.
+// Nil pointers preserve the current value.
+type CollectionPatch struct {
+	Fields     []Field
+	ListRule   *Rule
+	ViewRule   *Rule
+	CreateRule *Rule
+	UpdateRule *Rule
+	DeleteRule *Rule
+}
+
+func (s *Service) UpdateCollection(name string, patch CollectionPatch) (CollectionMeta, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if err := validateFields(fields); err != nil {
-		return CollectionMeta{}, err
-	}
 	meta, ok, err := s.getMeta(name)
 	if err != nil {
 		return CollectionMeta{}, err
@@ -145,7 +186,27 @@ func (s *Service) UpdateCollection(name string, fields []Field) (CollectionMeta,
 	if !ok {
 		return CollectionMeta{}, fmt.Errorf("collection %q not found", name)
 	}
-	meta.Fields = fields
+	if patch.Fields != nil {
+		if err := validateFields(patch.Fields); err != nil {
+			return CollectionMeta{}, err
+		}
+		meta.Fields = patch.Fields
+	}
+	if patch.ListRule != nil {
+		meta.ListRule = patch.ListRule.Normalize()
+	}
+	if patch.ViewRule != nil {
+		meta.ViewRule = patch.ViewRule.Normalize()
+	}
+	if patch.CreateRule != nil {
+		meta.CreateRule = patch.CreateRule.Normalize()
+	}
+	if patch.UpdateRule != nil {
+		meta.UpdateRule = patch.UpdateRule.Normalize()
+	}
+	if patch.DeleteRule != nil {
+		meta.DeleteRule = patch.DeleteRule.Normalize()
+	}
 	meta.Updated = nowIso()
 	if err := s.putMeta(meta); err != nil {
 		return CollectionMeta{}, err

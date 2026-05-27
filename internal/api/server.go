@@ -520,13 +520,39 @@ func (s *Server) handleCollection(w http.ResponseWriter, r *http.Request, name s
 		writeJSON(w, 200, m)
 	case http.MethodPatch:
 		var body struct {
-			Fields []collections.Field `json:"fields"`
+			Fields     []collections.Field `json:"fields"`
+			ListRule   string              `json:"listRule"`
+			ViewRule   string              `json:"viewRule"`
+			CreateRule string              `json:"createRule"`
+			UpdateRule string              `json:"updateRule"`
+			DeleteRule string              `json:"deleteRule"`
 		}
 		if err := decodeBody(r, &body); err != nil {
 			writeError(w, 400, err.Error())
 			return
 		}
-		m, err := s.colls.UpdateCollection(name, body.Fields)
+		patch := collections.CollectionPatch{Fields: body.Fields}
+		if body.ListRule != "" {
+			r := collections.Rule(body.ListRule)
+			patch.ListRule = &r
+		}
+		if body.ViewRule != "" {
+			r := collections.Rule(body.ViewRule)
+			patch.ViewRule = &r
+		}
+		if body.CreateRule != "" {
+			r := collections.Rule(body.CreateRule)
+			patch.CreateRule = &r
+		}
+		if body.UpdateRule != "" {
+			r := collections.Rule(body.UpdateRule)
+			patch.UpdateRule = &r
+		}
+		if body.DeleteRule != "" {
+			r := collections.Rule(body.DeleteRule)
+			patch.DeleteRule = &r
+		}
+		m, err := s.colls.UpdateCollection(name, patch)
 		if err != nil {
 			writeError(w, 400, err.Error())
 			return
@@ -544,8 +570,22 @@ func (s *Server) handleCollection(w http.ResponseWriter, r *http.Request, name s
 }
 
 func (s *Server) handleRecords(w http.ResponseWriter, r *http.Request, coll string) {
+	if strings.HasPrefix(coll, "_") {
+		// Internal collections (e.g. _users, _files) are always admin-managed
+		// over the API, no matter what rules someone tried to set.
+		writeError(w, 403, "internal collection")
+		return
+	}
+	meta, err := s.colls.GetCollection(coll)
+	if err != nil {
+		writeError(w, 404, err.Error())
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
+		if _, ok := s.enforceRule(w, r, meta.ListRule); !ok {
+			return
+		}
 		after := r.URL.Query().Get("after")
 		limit := 50
 		if v := r.URL.Query().Get("limit"); v != "" {
@@ -560,6 +600,9 @@ func (s *Server) handleRecords(w http.ResponseWriter, r *http.Request, coll stri
 		}
 		writeJSON(w, 200, res)
 	case http.MethodPost:
+		if _, ok := s.enforceRule(w, r, meta.CreateRule); !ok {
+			return
+		}
 		var data map[string]any
 		if err := decodeBody(r, &data); err != nil {
 			writeError(w, 400, err.Error())
@@ -577,8 +620,20 @@ func (s *Server) handleRecords(w http.ResponseWriter, r *http.Request, coll stri
 }
 
 func (s *Server) handleRecord(w http.ResponseWriter, r *http.Request, coll, id string) {
+	if strings.HasPrefix(coll, "_") {
+		writeError(w, 403, "internal collection")
+		return
+	}
+	meta, err := s.colls.GetCollection(coll)
+	if err != nil {
+		writeError(w, 404, err.Error())
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
+		if _, ok := s.enforceRule(w, r, meta.ViewRule); !ok {
+			return
+		}
 		rec, err := s.colls.GetRecord(coll, id)
 		if err != nil {
 			writeError(w, 404, err.Error())
@@ -586,6 +641,9 @@ func (s *Server) handleRecord(w http.ResponseWriter, r *http.Request, coll, id s
 		}
 		writeJSON(w, 200, rec)
 	case http.MethodPatch:
+		if _, ok := s.enforceRule(w, r, meta.UpdateRule); !ok {
+			return
+		}
 		var patch map[string]any
 		if err := decodeBody(r, &patch); err != nil {
 			writeError(w, 400, err.Error())
@@ -598,6 +656,9 @@ func (s *Server) handleRecord(w http.ResponseWriter, r *http.Request, coll, id s
 		}
 		writeJSON(w, 200, rec)
 	case http.MethodDelete:
+		if _, ok := s.enforceRule(w, r, meta.DeleteRule); !ok {
+			return
+		}
 		if err := s.colls.DeleteRecord(coll, id); err != nil {
 			writeError(w, 404, err.Error())
 			return

@@ -181,6 +181,71 @@ func TestSSEReceivesCollectionEvents(t *testing.T) {
 	}
 }
 
+func TestCollectionRulesEnforced(t *testing.T) {
+	srv, cleanup := startTestServer(t)
+	defer cleanup()
+	base := "http://" + srv.Addr()
+	adminTok := registerAdminAndAuth(t, base)
+
+	// Create a collection.
+	if code, body := doJSON(t, http.MethodPost, base+"/api/collections", map[string]any{
+		"name":   "posts",
+		"fields": []map[string]any{{"name": "title", "type": "text", "required": true}},
+	}); code != 201 {
+		t.Fatalf("create code=%d body=%s", code, body)
+	}
+
+	// Make list public, create admin-only.
+	code, _ := doJSON(t, http.MethodPatch, base+"/api/collections/posts", map[string]any{
+		"listRule":   "public",
+		"createRule": "admin",
+	})
+	if code != 200 {
+		t.Fatalf("patch rules code=%d", code)
+	}
+
+	// Anonymous can list (drop the token momentarily).
+	testToken = ""
+	if code, _ := doJSON(t, http.MethodGet, base+"/api/collections/posts/records", nil); code != 200 {
+		t.Fatalf("public list should return 200, got %d", code)
+	}
+	// Anonymous create should fail.
+	if code, _ := doJSON(t, http.MethodPost, base+"/api/collections/posts/records", map[string]any{"title": "x"}); code != 401 {
+		t.Fatalf("anonymous create should 401, got %d", code)
+	}
+
+	// Non-admin user can't create either.
+	_, body := doJSON(t, http.MethodPost, base+"/api/auth/register", map[string]any{
+		"email": "user2@test.local", "password": "anothersecret",
+	})
+	var sess struct {
+		Token string `json:"token"`
+	}
+	_ = json.Unmarshal(body, &sess)
+	testToken = sess.Token
+	if code, _ := doJSON(t, http.MethodPost, base+"/api/collections/posts/records", map[string]any{"title": "x"}); code != 403 {
+		t.Fatalf("non-admin create should 403, got %d", code)
+	}
+
+	// Admin can.
+	testToken = adminTok
+	if code, _ := doJSON(t, http.MethodPost, base+"/api/collections/posts/records", map[string]any{"title": "x"}); code != 201 {
+		t.Fatalf("admin create should 201, got %d", code)
+	}
+}
+
+func TestInternalCollectionsBlocked(t *testing.T) {
+	srv, cleanup := startTestServer(t)
+	defer cleanup()
+	base := "http://" + srv.Addr()
+	registerAdminAndAuth(t, base)
+
+	// Even as admin, hitting _users records via the public endpoint is forbidden.
+	if code, _ := doJSON(t, http.MethodGet, base+"/api/collections/_users/records", nil); code != 403 {
+		t.Fatalf("_users access should 403, got %d", code)
+	}
+}
+
 func TestAuthFlow(t *testing.T) {
 	srv, cleanup := startTestServer(t)
 	defer cleanup()

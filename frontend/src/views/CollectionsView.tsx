@@ -316,6 +316,13 @@ function CollectionHeader(props: {
               </span>
             ))}
           </div>
+          <div className="mt-2 flex flex-wrap gap-1.5 text-[10.5px]">
+            <RuleBadge op="list" rule={collection.listRule ?? ""} />
+            <RuleBadge op="view" rule={collection.viewRule ?? ""} />
+            <RuleBadge op="create" rule={collection.createRule ?? ""} />
+            <RuleBadge op="update" rule={collection.updateRule ?? ""} />
+            <RuleBadge op="delete" rule={collection.deleteRule ?? ""} />
+          </div>
         </div>
         <div className="flex gap-2">
           <button className="btn" onClick={props.onEditSchema}>
@@ -513,6 +520,9 @@ function CreateCollectionModal(props: {
   );
 }
 
+type RuleName = "public" | "authed" | "admin";
+const RULES: RuleName[] = ["public", "authed", "admin"];
+
 function SchemaEditorModal(props: {
   collection: Collection;
   onClose: () => void;
@@ -520,6 +530,13 @@ function SchemaEditorModal(props: {
   onError: (e: string) => void;
 }) {
   const [fields, setFields] = useState<Field[]>(() => props.collection.fields.map((f) => ({ ...f })));
+  const [rules, setRules] = useState<{ list: RuleName; view: RuleName; create: RuleName; update: RuleName; delete: RuleName }>({
+    list: ((props.collection.listRule || "authed") as RuleName),
+    view: ((props.collection.viewRule || "authed") as RuleName),
+    create: ((props.collection.createRule || "authed") as RuleName),
+    update: ((props.collection.updateRule || "authed") as RuleName),
+    delete: ((props.collection.deleteRule || "authed") as RuleName)
+  });
 
   function updateField(i: number, patch: Partial<Field>) {
     setFields(fields.map((f, idx) => (idx === i ? { ...f, ...patch } : f)));
@@ -534,7 +551,17 @@ function SchemaEditorModal(props: {
   async function submit() {
     try {
       const cleaned = fields.filter((f) => f.name.trim() !== "");
-      const updated = await UpdateCollection(props.collection.name, cleaned);
+      const updated = await UpdateCollection(
+        props.collection.name,
+        bridge.UpdatePatch.createFrom({
+          fields: cleaned,
+          listRule: rules.list,
+          viewRule: rules.view,
+          createRule: rules.create,
+          updateRule: rules.update,
+          deleteRule: rules.delete
+        })
+      );
       props.onSaved(updated);
     } catch (e) {
       props.onError(String(e));
@@ -543,7 +570,7 @@ function SchemaEditorModal(props: {
 
   return (
     <Modal onClose={props.onClose} title={`Edit schema · ${props.collection.name}`} wide>
-      <div className="space-y-4">
+      <div className="space-y-5">
         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11.5px] text-amber-800">
           Removing a field doesn&apos;t delete data from existing records — old values remain on disk but become invisible.
           Renaming is a remove + add.
@@ -587,6 +614,33 @@ function SchemaEditorModal(props: {
                 <button className="btn btn-ghost btn-icon col-span-1" onClick={() => removeField(i)} title="Remove">
                   ✕
                 </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="label">Access rules</label>
+          <div className="mt-1 text-[11px] text-ink-400">
+            <span className="font-semibold text-copper-700">public</span> — anyone ·{" "}
+            <span className="font-semibold text-steel-700">authed</span> — any logged-in user ·{" "}
+            <span className="font-semibold text-ink-700">admin</span> — admins only
+          </div>
+          <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-5">
+            {(["list", "view", "create", "update", "delete"] as const).map((op) => (
+              <div key={op}>
+                <div className="text-[11px] font-medium uppercase tracking-wider text-ink-500">{op}</div>
+                <select
+                  value={rules[op]}
+                  onChange={(e) => setRules({ ...rules, [op]: e.target.value as RuleName })}
+                  className="field mt-1"
+                >
+                  {RULES.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
               </div>
             ))}
           </div>
@@ -737,6 +791,19 @@ function renderCell(v: unknown, t: FieldType): string {
   if (t === "bool") return v ? "✓" : "✗";
   if (t === "json") return typeof v === "string" ? v : JSON.stringify(v);
   return String(v);
+}
+
+function RuleBadge(props: { op: string; rule: string }) {
+  const rule = (props.rule || "authed") as "public" | "authed" | "admin";
+  const tone =
+    rule === "public" ? "bg-copper-50 text-copper-700 border-copper-100" :
+    rule === "admin"  ? "bg-canvas-100 text-ink-700 border-canvas-300" :
+                        "bg-steel-100 text-steel-700 border-steel-100";
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono ${tone}`}>
+      <span className="opacity-60">{props.op}:</span>{rule}
+    </span>
+  );
 }
 
 function typeChipCls(t: FieldType): string {

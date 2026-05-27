@@ -29,10 +29,15 @@ type Field struct {
 }
 
 type CollectionMeta struct {
-	Name    string  `json:"name"`
-	Fields  []Field `json:"fields"`
-	Created string  `json:"created"`
-	Updated string  `json:"updated"`
+	Name       string  `json:"name"`
+	Fields     []Field `json:"fields"`
+	ListRule   string  `json:"listRule,omitempty"`
+	ViewRule   string  `json:"viewRule,omitempty"`
+	CreateRule string  `json:"createRule,omitempty"`
+	UpdateRule string  `json:"updateRule,omitempty"`
+	DeleteRule string  `json:"deleteRule,omitempty"`
+	Created    string  `json:"created"`
+	Updated    string  `json:"updated"`
 }
 
 type Document struct {
@@ -59,7 +64,15 @@ func toEngineMeta(m CollectionMeta) collections.CollectionMeta {
 			Unique:   f.Unique,
 		}
 	}
-	return collections.CollectionMeta{Name: m.Name, Fields: fs}
+	return collections.CollectionMeta{
+		Name:       m.Name,
+		Fields:     fs,
+		ListRule:   collections.Rule(m.ListRule),
+		ViewRule:   collections.Rule(m.ViewRule),
+		CreateRule: collections.Rule(m.CreateRule),
+		UpdateRule: collections.Rule(m.UpdateRule),
+		DeleteRule: collections.Rule(m.DeleteRule),
+	}
 }
 
 func fromEngineMeta(m collections.CollectionMeta) CollectionMeta {
@@ -72,7 +85,17 @@ func fromEngineMeta(m collections.CollectionMeta) CollectionMeta {
 			Unique:   f.Unique,
 		}
 	}
-	return CollectionMeta{Name: m.Name, Fields: fs, Created: m.Created, Updated: m.Updated}
+	return CollectionMeta{
+		Name:       m.Name,
+		Fields:     fs,
+		ListRule:   string(m.ListRule),
+		ViewRule:   string(m.ViewRule),
+		CreateRule: string(m.CreateRule),
+		UpdateRule: string(m.UpdateRule),
+		DeleteRule: string(m.DeleteRule),
+		Created:    m.Created,
+		Updated:    m.Updated,
+	}
 }
 
 func fromEngineRecord(r collections.Record) Document {
@@ -92,10 +115,48 @@ func (c *CollectionsService) CreateCollection(meta CollectionMeta) (CollectionMe
 	return fromEngineMeta(m), nil
 }
 
-func (c *CollectionsService) UpdateCollection(name string, fields []Field) (CollectionMeta, error) {
-	tmp := CollectionMeta{Name: name, Fields: fields}
-	em := toEngineMeta(tmp)
-	m, err := c.svc.UpdateCollection(name, em.Fields)
+// UpdatePatch carries the partial update. Empty strings on rules mean "leave unchanged".
+type UpdatePatch struct {
+	Fields     []Field `json:"fields"`
+	ListRule   string  `json:"listRule"`
+	ViewRule   string  `json:"viewRule"`
+	CreateRule string  `json:"createRule"`
+	UpdateRule string  `json:"updateRule"`
+	DeleteRule string  `json:"deleteRule"`
+}
+
+func (c *CollectionsService) UpdateCollection(name string, patch UpdatePatch) (CollectionMeta, error) {
+	enginePatch := collections.CollectionPatch{}
+	if patch.Fields != nil {
+		fs := make([]collections.Field, len(patch.Fields))
+		for i, f := range patch.Fields {
+			fs[i] = collections.Field{
+				Name: f.Name, Type: collections.FieldType(f.Type), Required: f.Required, Unique: f.Unique,
+			}
+		}
+		enginePatch.Fields = fs
+	}
+	if patch.ListRule != "" {
+		r := collections.Rule(patch.ListRule)
+		enginePatch.ListRule = &r
+	}
+	if patch.ViewRule != "" {
+		r := collections.Rule(patch.ViewRule)
+		enginePatch.ViewRule = &r
+	}
+	if patch.CreateRule != "" {
+		r := collections.Rule(patch.CreateRule)
+		enginePatch.CreateRule = &r
+	}
+	if patch.UpdateRule != "" {
+		r := collections.Rule(patch.UpdateRule)
+		enginePatch.UpdateRule = &r
+	}
+	if patch.DeleteRule != "" {
+		r := collections.Rule(patch.DeleteRule)
+		enginePatch.DeleteRule = &r
+	}
+	m, err := c.svc.UpdateCollection(name, enginePatch)
 	if err != nil {
 		return CollectionMeta{}, err
 	}

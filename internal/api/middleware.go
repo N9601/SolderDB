@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"solderdb/internal/auth"
+	"solderdb/internal/collections"
 	"solderdb/internal/logs"
 )
 
@@ -101,8 +102,43 @@ func (s *Server) logMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// enforceRule checks whether the request satisfies a collection-level rule.
+// Returns the user (zero value if rule allowed unauthenticated access),
+// plus a boolean ok flag. If false, the caller must stop and return.
+func (s *Server) enforceRule(w http.ResponseWriter, r *http.Request, rule collections.Rule) (auth.User, bool) {
+	switch rule.Normalize() {
+	case collections.RulePublic:
+		// Anyone — return current user if a valid token happened to be present.
+		u, _ := s.currentUser(r)
+		return u, true
+	case collections.RuleAuthed:
+		u, ok := s.currentUser(r)
+		if !ok {
+			writeError(w, 401, "authentication required")
+			return auth.User{}, false
+		}
+		return u, true
+	case collections.RuleAdmin:
+		u, ok := s.currentUser(r)
+		if !ok {
+			writeError(w, 401, "authentication required")
+			return auth.User{}, false
+		}
+		if u.Role != auth.RoleAdmin {
+			writeError(w, 403, "admin required")
+			return auth.User{}, false
+		}
+		return u, true
+	}
+	writeError(w, 500, "unknown rule")
+	return auth.User{}, false
+}
+
 // routePolicy maps an incoming request to the required auth level.
 // Defaults to authed so adding new endpoints fails closed.
+//
+// Record routes return policyOpen — the handler does its own check based on
+// the target collection's per-action rule.
 func (s *Server) routePolicy(r *http.Request) policy {
 	p := r.URL.Path
 	m := r.Method
@@ -125,14 +161,14 @@ func (s *Server) routePolicy(r *http.Request) policy {
 		rest := strings.TrimPrefix(p, "/api/collections/")
 		parts := strings.SplitN(rest, "/", 3)
 		// /api/collections/<name>          — admin for PATCH/DELETE, authed for GET
-		// /api/collections/<name>/records* — authed
+		// /api/collections/<name>/records* — handler-level rule check (open here)
 		if len(parts) == 1 {
 			if m == http.MethodPatch || m == http.MethodDelete {
 				return policyAdmin
 			}
 			return policyAuthed
 		}
-		return policyAuthed
+		return policyPublic // handler enforces per-collection rules
 	}
 
 	// Raw KV: any write is admin; reads authed.
