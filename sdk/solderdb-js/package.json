@@ -1,0 +1,33 @@
+{
+  "name": "solderdb",
+  "version": "0.2.0",
+  "description": "JavaScript / TypeScript SDK for SolderDB — local-first single-binary database.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/N9601/SolderDB.git",
+    "directory": "sdk/solderdb-js"
+  },
+  "keywords": ["database", "local-first", "lsm", "embedded", "solderdb"]
+}

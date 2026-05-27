@@ -743,6 +743,32 @@ function SettingsView(props: { stats: DBStats | null; apiAddr: string }) {
   return (
     <div className="animate-slideUp space-y-4">
       <div className="card card-pad">
+        <div className="section-title">JavaScript SDK</div>
+        <div className="section-sub">Drop-in client for any web or Node app pointing at this database.</div>
+        <div className="mt-4 space-y-3">
+          <div className="rounded-lg border border-canvas-200 bg-canvas-100 p-3 text-[12px]">
+            <pre className="font-mono text-[11.5px] leading-relaxed text-ink-700">
+{`npm install solderdb
+
+import { SolderDB } from "solderdb";
+
+const db = new SolderDB("${props.apiAddr || "http://localhost:8787"}");
+await db.auth.login("you@example.com", "secret");
+
+type Note = { title: string };
+const notes = db.collection<Note>("notes");
+await notes.create({ title: "hi" });
+
+notes.subscribe(evt => console.log(evt.kind, evt.id));`}
+            </pre>
+          </div>
+          <div className="text-[11px] text-ink-400">
+            Source: <span className="font-mono">sdk/solderdb-js/</span> in the repo.
+          </div>
+        </div>
+      </div>
+
+      <div className="card card-pad">
         <div className="section-title">REST API</div>
         <div className="section-sub">Local HTTP server · everything the UI can do is callable from any client.</div>
         <div className="mt-4 space-y-3">
