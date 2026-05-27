@@ -1,0 +1,94 @@
+name: Release
+
+# Triggers on any tag that looks like a version (v1.0.0, v1.1.0-beta, etc.).
+# Builds the Wails binary on a Windows runner, then drafts a GitHub Release
+# with the binary and the changelog section attached.
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write   # required to create the release
+
+jobs:
+  build:
+    name: Build SolderDB.exe
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Resolve tag name
+        id: tag
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF -replace 'refs/tags/',''
+          echo "tag=$tag" >> $env:GITHUB_OUTPUT
+          echo "Building $tag"
+
+      - name: Generate app icon
+        run: go run ./tools/genicon
+
+      - name: Build (windows/amd64)
+        run: wails build -clean -platform windows/amd64
+
+      - name: Compute SHA-256
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash build/bin/SolderDB.exe -Algorithm SHA256).Hash.ToLower()
+          echo "SHA256: $hash"
+          $hash | Out-File -FilePath build/bin/SolderDB.exe.sha256 -Encoding ascii -NoNewline
+
+      - name: Extract changelog section for this tag
+        id: changelog
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.tag.outputs.tag }}".TrimStart('v')
+          $lines = Get-Content CHANGELOG.md
+          $body = New-Object System.Collections.Generic.List[string]
+          $inSection = $false
+          foreach ($line in $lines) {
+            if ($line -match "^## \[$([regex]::Escape($tag))\]") {
+              $inSection = $true
+              continue
+            }
+            if ($inSection -and $line -match '^## \[') {
+              break
+            }
+            if ($inSection) {
+              $body.Add($line)
+            }
+          }
+          if ($body.Count -eq 0) {
+            $body.Add("Release $tag")
+          }
+          $out = "release-notes.md"
+          $body -join "`n" | Out-File -FilePath $out -Encoding utf8
+          echo "notes=$out" >> $env:GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: ${{ steps.tag.outputs.tag }}
+          body_path: release-notes.md
+          draft: false
+          prerelease: ${{ contains(steps.tag.outputs.tag, '-') }}
+          files: |
+            build/bin/SolderDB.exe
+            build/bin/SolderDB.exe.sha256
