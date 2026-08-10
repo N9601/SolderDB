@@ -92,6 +92,27 @@ func TestFlushCreatesSSTableAndResetsWAL(t *testing.T) {
 	}
 }
 
+func TestDeleteShadowsFlushedValue(t *testing.T) {
+	dir := t.TempDir()
+	db, err := Open(Options{DataDir: dir, FlushThresholdBytes: 64})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	// Large value forces a flush, so the live value ends up in an SSTable.
+	if err := db.Set("a", strings.Repeat("x", 200)); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	// The tombstone stays in the memtable (well under the threshold).
+	if err := db.Delete("a"); err != nil {
+		t.Fatalf("del: %v", err)
+	}
+	if v, ok := db.Get("a"); ok {
+		t.Fatalf("deleted key still visible, got %d bytes", len(v))
+	}
+}
+
 func TestListKeysMergesMemtableAndSSTables(t *testing.T) {
 	dir := t.TempDir()
 	db, err := Open(Options{DataDir: dir, FlushThresholdBytes: 64})

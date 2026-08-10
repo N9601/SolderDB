@@ -425,14 +425,15 @@ func (db *DB) Stats() (Stats, error) {
 func (db *DB) Get(key string) (string, bool) {
 	db.mu.RLock()
 	entry, ok := db.memtable[key]
-	if !ok || entry.deleted {
-		// Fall through to SSTables (need to release RLock first to avoid holding it during I/O).
-	} else {
-		val := entry.value
-		db.mu.RUnlock()
-		return val, true
-	}
 	db.mu.RUnlock()
+	if ok {
+		// A memtable tombstone is newer than anything on disk, so it must
+		// not fall through to an older SSTable value.
+		if entry.deleted {
+			return "", false
+		}
+		return entry.value, true
+	}
 
 	return db.getFromSSTables(key)
 }
