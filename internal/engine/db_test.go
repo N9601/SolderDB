@@ -186,6 +186,74 @@ func TestCompactionReducesSSTableCount(t *testing.T) {
 	}
 }
 
+func TestCompactedTableDoesNotShadowLaterFlushesAfterReopen(t *testing.T) {
+	dir := t.TempDir()
+	db, err := Open(Options{DataDir: dir, FlushThresholdBytes: 64})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	big := strings.Repeat("x", 200)
+	// Two flushed tables, then compact them into one.
+	for _, kv := range [][2]string{{"k", "old"}, {"gone", "old"}} {
+		if err := db.Set(kv[0], kv[1]+big); err != nil {
+			t.Fatalf("set: %v", err)
+		}
+	}
+	if err := db.Compact(); err != nil {
+		t.Fatalf("compact: %v", err)
+	}
+	// Newer writes land in tables flushed after the compacted one.
+	if err := db.Set("k", "new"+big); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	if err := db.Delete("gone"); err != nil {
+		t.Fatalf("del: %v", err)
+	}
+	if err := db.Set("pad", big); err != nil { // flushes the tombstone
+		t.Fatalf("set: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	db2, err := Open(Options{DataDir: dir, FlushThresholdBytes: 64})
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer func() { _ = db2.Close() }()
+	if v, ok := db2.Get("k"); !ok || !strings.HasPrefix(v, "new") {
+		t.Fatalf("expected newest value for k after reopen, got %.3q ok=%v", v, ok)
+	}
+	if _, ok := db2.Get("gone"); ok {
+		t.Fatalf("deleted key resurrected after reopen")
+	}
+}
+
+func TestParseSSTFileName(t *testing.T) {
+	cases := []struct {
+		name      string
+		seq       uint64
+		compacted bool
+		ok        bool
+	}{
+		{"sst_42.sst", 42, false, true},
+		{"sst_compact_43.sst", 43, true, true},
+		{sstFileName(7, false), 7, false, true},
+		{sstFileName(7, true), 7, true, true},
+		{"sst_.sst", 0, false, false},
+		{"sst_abc.sst", 0, false, false},
+		{"other.sst", 0, false, false},
+		{"sst_42.sst.tmp", 0, false, false},
+	}
+	for _, c := range cases {
+		seq, compacted, ok := parseSSTFileName(c.name)
+		if seq != c.seq || compacted != c.compacted || ok != c.ok {
+			t.Errorf("parseSSTFileName(%q) = %d, %v, %v; want %d, %v, %v",
+				c.name, seq, compacted, ok, c.seq, c.compacted, c.ok)
+		}
+	}
+}
+
 func TestScanRangeBounds(t *testing.T) {
 	dir := t.TempDir()
 	db, err := Open(Options{DataDir: dir})

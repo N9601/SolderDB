@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -128,7 +129,9 @@ type DB struct {
 	walW    *bufio.Writer
 
 	sstDir   string
-	sstables []*sstable
+	sstables []*sstable // ordered oldest to newest by seq
+	// lastSeq is the highest SSTable sequence number handed out so far.
+	lastSeq uint64
 
 	flushThresholdBytes int64
 
@@ -667,8 +670,12 @@ func (db *DB) Compact() error {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].key < out[j].key })
 
-	ts := time.Now().UTC().UnixNano()
-	filename := "sst_compact_" + strconv.FormatInt(ts, 10) + ".sst"
+	// The merged table must sort directly after its newest input and before
+	// anything flushed later, otherwise a reopen would let it shadow newer
+	// data. Flushes always take a seq above every existing table, so
+	// newest+1 is safe (a tie with a flush sorts the compacted table first).
+	seq := tables[len(tables)-1].seq + 1
+	filename := sstFileName(seq, true)
 	newPath := filepath.Join(db.sstDir, filename)
 	if err := writeSSTable(newPath, out); err != nil {
 		return err
@@ -682,6 +689,9 @@ func (db *DB) Compact() error {
 	db.mu.Lock()
 	oldTables := append([]*sstable(nil), db.sstables...)
 	db.sstables = []*sstable{newTable}
+	if seq > db.lastSeq {
+		db.lastSeq = seq
+	}
 	db.mu.Unlock()
 
 	// Best-effort delete old SSTables. If deletion fails (e.g., antivirus lock),
@@ -861,10 +871,69 @@ func (db *DB) recomputeMemBytesLocked() {
 type sstable struct {
 	path string
 	f    *os.File
+	// seq orders tables oldest to newest; compacted breaks seq ties (a
+	// compacted table sorts before a flushed table with the same seq).
+	seq       uint64
+	compacted bool
 	// Sorted keys and offsets into the data section.
 	keys    []string
 	offsets []uint64
 	bloom   *bloomFilter
+}
+
+const (
+	sstFlushPrefix   = "sst_"
+	sstCompactPrefix = "sst_compact_"
+	sstExt           = ".sst"
+)
+
+func sstFileName(seq uint64, compacted bool) string {
+	prefix := sstFlushPrefix
+	if compacted {
+		prefix = sstCompactPrefix
+	}
+	return prefix + strconv.FormatUint(seq, 10) + sstExt
+}
+
+// parseSSTFileName is the inverse of sstFileName.
+func parseSSTFileName(name string) (seq uint64, compacted bool, ok bool) {
+	base, found := strings.CutSuffix(name, sstExt)
+	if !found {
+		return 0, false, false
+	}
+	if rest, found := strings.CutPrefix(base, sstCompactPrefix); found {
+		base, compacted = rest, true
+	} else if rest, found := strings.CutPrefix(base, sstFlushPrefix); found {
+		base = rest
+	} else {
+		return 0, false, false
+	}
+	seq, err := strconv.ParseUint(base, 10, 64)
+	if err != nil {
+		return 0, false, false
+	}
+	return seq, compacted, true
+}
+
+// tableOlder reports whether a must be consulted before b when resolving
+// which version of a key is newest (a is older than b).
+func tableOlder(a, b *sstable) bool {
+	if a.seq != b.seq {
+		return a.seq < b.seq
+	}
+	return a.compacted && !b.compacted
+}
+
+// nextFlushSeqLocked returns a sequence number above every existing table.
+// It tracks wall-clock nanoseconds so file names stay readable, but never
+// goes backwards if the clock does. Caller must hold db.mu.Lock().
+func (db *DB) nextFlushSeqLocked() uint64 {
+	seq := uint64(time.Now().UTC().UnixNano())
+	if seq <= db.lastSeq {
+		seq = db.lastSeq + 1
+	}
+	db.lastSeq = seq
+	return seq
 }
 
 func (t *sstable) close() error {
@@ -895,30 +964,35 @@ func (db *DB) loadSSTables() error {
 		return fmt.Errorf("read sstable dir: %w", err)
 	}
 
-	var paths []string
+	db.sstables = nil
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
 		}
-		if filepath.Ext(e.Name()) != ".sst" {
+		if filepath.Ext(e.Name()) != sstExt {
 			continue
 		}
-		paths = append(paths, filepath.Join(db.sstDir, e.Name()))
-	}
-	sort.Strings(paths)
-
-	db.sstables = nil
-	for _, p := range paths {
-		t, err := openSSTable(p)
+		t, err := openSSTable(filepath.Join(db.sstDir, e.Name()))
 		if err != nil {
 			return err
 		}
 		db.sstables = append(db.sstables, t)
+		if t.seq > db.lastSeq {
+			db.lastSeq = t.seq
+		}
 	}
+	// Order by sequence number, not file name: "sst_compact_" sorts after
+	// every "sst_<digits>" name, which would let a compacted table shadow
+	// tables flushed after it.
+	sort.Slice(db.sstables, func(i, j int) bool { return tableOlder(db.sstables[i], db.sstables[j]) })
 	return nil
 }
 
 func openSSTable(path string) (*sstable, error) {
+	seq, compacted, ok := parseSSTFileName(filepath.Base(path))
+	if !ok {
+		return nil, fmt.Errorf("unrecognized sstable file name: %s", path)
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open sstable: %w", err)
@@ -1027,7 +1101,10 @@ func openSSTable(path string) (*sstable, error) {
 		offsets = append(offsets, binary.LittleEndian.Uint64(offBuf[:]))
 	}
 
-	return &sstable{path: path, f: f, keys: keys, offsets: offsets, bloom: bloom}, nil
+	return &sstable{
+		path: path, f: f, seq: seq, compacted: compacted,
+		keys: keys, offsets: offsets, bloom: bloom,
+	}, nil
 }
 
 func (t *sstable) readAll() ([]sstRecord, error) {
@@ -1236,9 +1313,7 @@ func (db *DB) flushMemtableToSSTableLocked() error {
 	}
 	sort.Slice(records, func(i, j int) bool { return records[i].key < records[j].key })
 
-	ts := time.Now().UTC().UnixNano()
-	filename := "sst_" + strconv.FormatInt(ts, 10) + ".sst"
-	path := filepath.Join(db.sstDir, filename)
+	path := filepath.Join(db.sstDir, sstFileName(db.nextFlushSeqLocked(), false))
 
 	if err := writeSSTable(path, records); err != nil {
 		return err
