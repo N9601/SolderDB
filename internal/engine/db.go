@@ -123,6 +123,9 @@ type DB struct {
 	memtable map[string]memEntry
 	memBytes int64
 
+	// compactMu serializes Compact. It is taken before mu, never under it.
+	compactMu sync.Mutex
+
 	dataDir string
 	walPath string
 	walFile *os.File
@@ -637,6 +640,11 @@ func (db *DB) SetCompactionGate(g CompactionGate) {
 // Compact merges all current SSTables into a single new SSTable (newest-wins).
 // This reduces the number of files and improves read performance.
 func (db *DB) Compact() error {
+	// One compaction at a time: concurrent runs would read the same file
+	// handles and race to swap the table list.
+	db.compactMu.Lock()
+	defer db.compactMu.Unlock()
+
 	db.mu.RLock()
 	tables := append([]*sstable(nil), db.sstables...)
 	gate := db.gate
@@ -687,24 +695,45 @@ func (db *DB) Compact() error {
 	}
 
 	db.mu.Lock()
-	oldTables := append([]*sstable(nil), db.sstables...)
-	db.sstables = []*sstable{newTable}
+	// Writes may have flushed new tables while we merged. Flushes only
+	// append and compactions are serialized, so the inputs must still be a
+	// prefix of the live list; anything after them is newer and is kept.
+	if !isPrefix(tables, db.sstables) {
+		db.mu.Unlock()
+		_ = newTable.close()
+		_ = os.Remove(newPath)
+		return errors.New("compaction aborted: sstable set changed (database closed?)")
+	}
+	live := make([]*sstable, 0, 1+len(db.sstables)-len(tables))
+	live = append(live, newTable)
+	live = append(live, db.sstables[len(tables):]...)
+	db.sstables = live
 	if seq > db.lastSeq {
 		db.lastSeq = seq
 	}
 	db.mu.Unlock()
 
-	// Best-effort delete old SSTables. If deletion fails (e.g., antivirus lock),
-	// the new table is still active and old files can be cleaned later.
-	for _, t := range oldTables {
-		if t.path == newPath {
-			continue
-		}
+	// Best-effort delete of the merged inputs. If deletion fails (e.g.,
+	// antivirus lock), the new table still sorts after them, so leftovers
+	// are shadowed on the next open and can be cleaned later.
+	for _, t := range tables {
 		_ = t.close()
 		_ = os.Remove(t.path)
 	}
 
 	return nil
+}
+
+func isPrefix(prefix, list []*sstable) bool {
+	if len(prefix) > len(list) {
+		return false
+	}
+	for i := range prefix {
+		if prefix[i] != list[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // WAL record format (binary, little-endian):

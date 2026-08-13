@@ -405,6 +405,64 @@ func TestCompactionGateBlocks(t *testing.T) {
 	}
 }
 
+// hookGate runs fn when Compact consults the gate, which happens after the
+// input tables are chosen and before they are merged.
+type hookGate struct{ fn func() }
+
+func (g hookGate) Allow() (bool, string) {
+	g.fn()
+	return true, ""
+}
+
+func TestCompactionKeepsTablesFlushedMidCompaction(t *testing.T) {
+	dir := t.TempDir()
+	db, err := Open(Options{DataDir: dir, FlushThresholdBytes: 64})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	big := strings.Repeat("x", 200)
+	for i := 0; i < 2; i++ {
+		if err := db.Set("k"+strconv.Itoa(i), big); err != nil {
+			t.Fatalf("set: %v", err)
+		}
+	}
+	db.SetCompactionGate(hookGate{fn: func() {
+		// Flushes a new table while the compaction is in flight.
+		if err := db.Set("during", big); err != nil {
+			t.Errorf("set during compaction: %v", err)
+		}
+	}})
+	if err := db.Compact(); err != nil {
+		t.Fatalf("compact: %v", err)
+	}
+	db.SetCompactionGate(nil)
+
+	if _, ok := db.Get("during"); !ok {
+		t.Fatalf("write flushed during compaction was lost")
+	}
+	st, err := db.Stats()
+	if err != nil {
+		t.Fatalf("stats: %v", err)
+	}
+	if st.SSTableCount != 2 {
+		t.Fatalf("expected compacted table plus the mid-compaction flush, got %d tables", st.SSTableCount)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	db2, err := Open(Options{DataDir: dir})
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer func() { _ = db2.Close() }()
+	for _, k := range []string{"k0", "k1", "during"} {
+		if _, ok := db2.Get(k); !ok {
+			t.Fatalf("%s missing after reopen", k)
+		}
+	}
+}
+
 // Run with `go test -race ./...` once cgo is available to catch any
 // concurrency bugs. Without -race this still exercises every lock path
 // and surfaces deadlocks or panics under load.
