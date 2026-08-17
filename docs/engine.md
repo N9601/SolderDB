@@ -129,8 +129,8 @@ After a hard crash (power loss, OOM kill):
 ## Concurrency model
 
 - The memtable is protected by a single `sync.RWMutex`. Reads use RLock, writes use Lock.
-- SSTables are immutable. No locks needed for reads. Loading the SSTable list takes the engine lock for the slice swap.
-- Compaction takes a snapshot of the SSTable list under RLock, does its work without holding any locks, then takes the write lock briefly to swap in the result and delete the old files.
+- SSTables are immutable. No locks needed for reads. A reader copies the SSTable list under RLock and takes a reference on each table, so the files stay open while it reads without the lock.
+- Compaction runs one at a time. It takes a snapshot of the SSTable list under RLock, does its work without holding the engine lock, then takes the write lock briefly to swap the merged inputs for the result (tables flushed in the meantime are kept). Each old file is closed and deleted once its last reader has finished.
 - The WAL append takes the engine lock for the duration of `write, flush, fsync` to maintain a single linear order on disk.
 
 Run `go test -race ./internal/engine` to verify (requires `CGO_ENABLED=1` and a C compiler).

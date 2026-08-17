@@ -190,8 +190,9 @@ func (db *DB) ListKeys(opts ListKeysOptions) ([]string, error) {
 	for k, v := range db.memtable {
 		memSnapshot[k] = v
 	}
-	tables := append([]*sstable(nil), db.sstables...)
+	tables := acquireTablesLocked(db.sstables)
 	db.mu.RUnlock()
+	defer releaseTables(tables)
 
 	visible := make(map[string]struct{}, len(memSnapshot))
 	deleted := make(map[string]struct{})
@@ -366,7 +367,10 @@ func (db *DB) Close() error {
 	db.walW = nil
 	db.walFile = nil
 
+	// Readers hold references without db.mu, so wait for them before
+	// closing the files out from under them.
 	for _, t := range db.sstables {
+		t.readers.Wait()
 		_ = t.close()
 	}
 	db.sstables = nil
@@ -659,17 +663,9 @@ func (db *DB) Compact() error {
 		}
 	}
 
-	merged := make(map[string]sstRecord, 1024)
-
-	// Oldest -> newest so newer records overwrite.
-	for i := 0; i < len(tables); i++ {
-		recs, err := tables[i].readAll()
-		if err != nil {
-			return err
-		}
-		for _, r := range recs {
-			merged[r.key] = r
-		}
+	merged, err := db.mergeTables(tables)
+	if err != nil {
+		return err
 	}
 
 	out := make([]sstRecord, 0, len(merged))
@@ -702,7 +698,7 @@ func (db *DB) Compact() error {
 		db.mu.Unlock()
 		_ = newTable.close()
 		_ = os.Remove(newPath)
-		return errors.New("compaction aborted: sstable set changed (database closed?)")
+		return errCompactionRaced
 	}
 	live := make([]*sstable, 0, 1+len(db.sstables)-len(tables))
 	live = append(live, newTable)
@@ -713,16 +709,68 @@ func (db *DB) Compact() error {
 	}
 	db.mu.Unlock()
 
-	// Best-effort delete of the merged inputs. If deletion fails (e.g.,
-	// antivirus lock), the new table still sorts after them, so leftovers
-	// are shadowed on the next open and can be cleaned later.
+	// Readers that picked up the old list may still be using the inputs;
+	// new readers only see the merged table. Close each input once its
+	// last reader is done. Deletion is best-effort: if it fails (e.g.,
+	// antivirus lock), the new table still sorts after the leftovers, so
+	// they are shadowed on the next open and can be cleaned later.
 	for _, t := range tables {
+		t.readers.Wait()
 		_ = t.close()
 		_ = os.Remove(t.path)
 	}
 
 	return nil
 }
+
+// mergeTables reads every record from tables (oldest first) and keeps the
+// newest version of each key. It holds reader references while reading so
+// a concurrent Close waits for the merge instead of closing the files
+// mid-read; if Close already ran, the table list no longer matches and the
+// merge fails.
+func (db *DB) mergeTables(tables []*sstable) (map[string]sstRecord, error) {
+	db.mu.RLock()
+	if !isPrefix(tables, db.sstables) {
+		db.mu.RUnlock()
+		return nil, errCompactionRaced
+	}
+	acquireTablesLocked(tables)
+	db.mu.RUnlock()
+	defer releaseTables(tables)
+
+	merged := make(map[string]sstRecord, 1024)
+	for _, t := range tables {
+		recs, err := t.readAll()
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range recs {
+			merged[r.key] = r
+		}
+	}
+	return merged, nil
+}
+
+// acquireTablesLocked copies the table list and takes a reader reference on
+// each table, so the files stay open after db.mu is released. Pass the
+// result to releaseTables when done. Caller must hold db.mu.
+func acquireTablesLocked(tables []*sstable) []*sstable {
+	out := append([]*sstable(nil), tables...)
+	for _, t := range out {
+		t.readers.Add(1)
+	}
+	return out
+}
+
+func releaseTables(tables []*sstable) {
+	for _, t := range tables {
+		t.readers.Done()
+	}
+}
+
+// errCompactionRaced means the table list changed underneath a compaction in
+// a way only Close can cause.
+var errCompactionRaced = errors.New("compaction aborted: sstable set changed (database closed?)")
 
 func isPrefix(prefix, list []*sstable) bool {
 	if len(prefix) > len(list) {
@@ -904,6 +952,9 @@ type sstable struct {
 	// compacted table sorts before a flushed table with the same seq).
 	seq       uint64
 	compacted bool
+	// readers counts in-flight reads that hold this table without db.mu
+	// (see acquireTablesLocked). The file is only closed once it drains.
+	readers sync.WaitGroup
 	// Sorted keys and offsets into the data section.
 	keys    []string
 	offsets []uint64
@@ -1215,8 +1266,9 @@ func (t *sstable) readAll() ([]sstRecord, error) {
 
 func (db *DB) getFromSSTables(key string) (string, bool) {
 	db.mu.RLock()
-	tables := append([]*sstable(nil), db.sstables...)
+	tables := acquireTablesLocked(db.sstables)
 	db.mu.RUnlock()
+	defer releaseTables(tables)
 
 	// Newest tables last (sorted by name); search from newest to oldest.
 	for i := len(tables) - 1; i >= 0; i-- {

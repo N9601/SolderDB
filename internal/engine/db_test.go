@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 )
 
@@ -460,6 +461,70 @@ func TestCompactionKeepsTablesFlushedMidCompaction(t *testing.T) {
 		if _, ok := db2.Get(k); !ok {
 			t.Fatalf("%s missing after reopen", k)
 		}
+	}
+}
+
+func TestReadsDuringCompactionNeverMiss(t *testing.T) {
+	dir := t.TempDir()
+	db, err := Open(Options{DataDir: dir, FlushThresholdBytes: 256})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	const seeds = 40
+	seedKey := func(i int) string { return fmt.Sprintf("seed%02d", i) }
+	for i := 0; i < seeds; i++ {
+		if err := db.Set(seedKey(i), strings.Repeat("v", 64)); err != nil {
+			t.Fatalf("set: %v", err)
+		}
+	}
+
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	stopReaders := sync.OnceFunc(func() {
+		close(stop)
+		wg.Wait()
+	})
+	defer stopReaders() // also on t.Fatalf, before db.Close runs
+	var misses, listErrs atomic.Int64
+	for r := 0; r < 4; r++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				for i := 0; i < seeds; i++ {
+					if _, ok := db.Get(seedKey(i)); !ok {
+						misses.Add(1)
+					}
+				}
+				if _, err := db.ListKeys(ListKeysOptions{Prefix: "seed"}); err != nil {
+					listErrs.Add(1)
+				}
+			}
+		}()
+	}
+
+	for i := 0; i < 30; i++ {
+		if err := db.Set(fmt.Sprintf("fill%03d", i), strings.Repeat("f", 300)); err != nil {
+			t.Fatalf("set fill: %v", err)
+		}
+		if err := db.Compact(); err != nil {
+			t.Fatalf("compact: %v", err)
+		}
+	}
+	stopReaders()
+
+	if n := misses.Load(); n > 0 {
+		t.Fatalf("%d reads missed a live key while compaction swapped tables", n)
+	}
+	if n := listErrs.Load(); n > 0 {
+		t.Fatalf("%d ListKeys calls failed while compaction swapped tables", n)
 	}
 }
 
