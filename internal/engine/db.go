@@ -93,6 +93,26 @@ const (
 	opDel opCode = 2
 )
 
+// Size limits for a single record. WAL replay and SSTable reads treat
+// anything larger as corruption, so writes over them are rejected up front.
+const (
+	MaxKeyBytes   = 16 * 1024 * 1024
+	MaxValueBytes = 64 * 1024 * 1024
+)
+
+func checkRecordSize(key, value string) error {
+	if key == "" {
+		return errors.New("key cannot be empty")
+	}
+	if len(key) > MaxKeyBytes {
+		return fmt.Errorf("key is %d bytes, limit is %d", len(key), MaxKeyBytes)
+	}
+	if len(value) > MaxValueBytes {
+		return fmt.Errorf("value is %d bytes, limit is %d", len(value), MaxValueBytes)
+	}
+	return nil
+}
+
 type memEntry struct {
 	value   string
 	deleted bool
@@ -449,8 +469,8 @@ func (db *DB) Get(key string) (string, bool) {
 }
 
 func (db *DB) Set(key, value string) error {
-	if key == "" {
-		return errors.New("key cannot be empty")
+	if err := checkRecordSize(key, value); err != nil {
+		return err
 	}
 
 	db.mu.Lock()
@@ -479,8 +499,8 @@ func (db *DB) Set(key, value string) error {
 }
 
 func (db *DB) Delete(key string) error {
-	if key == "" {
-		return errors.New("key cannot be empty")
+	if err := checkRecordSize(key, ""); err != nil {
+		return err
 	}
 
 	db.mu.Lock()
@@ -867,7 +887,7 @@ func (db *DB) replayWAL() error {
 		if keyLen == 0 {
 			return errors.New("wal record with empty key")
 		}
-		if keyLen > 16*1024*1024 || valLen > 64*1024*1024 {
+		if keyLen > MaxKeyBytes || valLen > MaxValueBytes {
 			return errors.New("wal record exceeds size limits")
 		}
 
@@ -1163,7 +1183,7 @@ func openSSTable(path string) (*sstable, error) {
 			return nil, fmt.Errorf("read index keyLen: %w", err)
 		}
 		kl := binary.LittleEndian.Uint32(klBuf[:])
-		if kl == 0 || kl > 16*1024*1024 {
+		if kl == 0 || kl > MaxKeyBytes {
 			_ = f.Close()
 			return nil, fmt.Errorf("sstable invalid index keyLen: %s", path)
 		}
@@ -1236,7 +1256,7 @@ func (t *sstable) readAll() ([]sstRecord, error) {
 
 		keyLen := binary.LittleEndian.Uint32(lens[0:4])
 		valLen := binary.LittleEndian.Uint32(lens[4:8])
-		if keyLen == 0 || keyLen > 16*1024*1024 || valLen > 64*1024*1024 {
+		if keyLen == 0 || keyLen > MaxKeyBytes || valLen > MaxValueBytes {
 			return nil, fmt.Errorf("sstable invalid record sizes: %s", t.path)
 		}
 
@@ -1353,7 +1373,7 @@ func (t *sstable) readAt(offset uint64, key string) (value string, ok bool, dele
 	tomb := hdr[0]
 	keyLen := binary.LittleEndian.Uint32(hdr[1:5])
 	valLen := binary.LittleEndian.Uint32(hdr[5:9])
-	if keyLen == 0 || keyLen > 16*1024*1024 || valLen > 64*1024*1024 {
+	if keyLen == 0 || keyLen > MaxKeyBytes || valLen > MaxValueBytes {
 		return "", false, false, errors.New("sstable record size invalid")
 	}
 

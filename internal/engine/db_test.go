@@ -114,6 +114,36 @@ func TestDeleteShadowsFlushedValue(t *testing.T) {
 	}
 }
 
+func TestOversizedRecordsRejected(t *testing.T) {
+	dir := t.TempDir()
+	db, err := Open(Options{DataDir: dir})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if err := db.Set(strings.Repeat("k", MaxKeyBytes+1), "v"); err == nil {
+		t.Fatalf("expected error for oversized key")
+	}
+	if err := db.Set("k", strings.Repeat("v", MaxValueBytes+1)); err == nil {
+		t.Fatalf("expected error for oversized value")
+	}
+	if err := db.Set("ok", "v"); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	// Nothing oversized reached the WAL, so replay still succeeds.
+	db2, err := Open(Options{DataDir: dir})
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer func() { _ = db2.Close() }()
+	if v, ok := db2.Get("ok"); !ok || v != "v" {
+		t.Fatalf("expected ok=v after reopen, got %q ok=%v", v, ok)
+	}
+}
+
 func TestListKeysMergesMemtableAndSSTables(t *testing.T) {
 	dir := t.TempDir()
 	db, err := Open(Options{DataDir: dir, FlushThresholdBytes: 64})
