@@ -403,6 +403,47 @@ func TestWALCorruptedTailIsIgnored(t *testing.T) {
 	}
 }
 
+func TestWALGarbageHeaderTailIsIgnored(t *testing.T) {
+	for name, tail := range map[string][]byte{
+		// File extended by a crash before the record bytes were written.
+		"zero-filled": make([]byte, 32),
+		// Header whose lengths exceed the record limits.
+		"oversized": {1, 0xff, 0xff, 0xff, 0x7f, 0, 0, 0, 0, 0, 0, 0, 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			db, err := Open(Options{DataDir: dir})
+			if err != nil {
+				t.Fatalf("open: %v", err)
+			}
+			if err := db.Set("good", "value"); err != nil {
+				t.Fatalf("set: %v", err)
+			}
+			if err := db.Close(); err != nil {
+				t.Fatalf("close: %v", err)
+			}
+
+			f, err := os.OpenFile(filepath.Join(dir, "wal.bin"), os.O_WRONLY|os.O_APPEND, 0o600)
+			if err != nil {
+				t.Fatalf("open wal: %v", err)
+			}
+			if _, err := f.Write(tail); err != nil {
+				t.Fatalf("write tail: %v", err)
+			}
+			_ = f.Close()
+
+			db2, err := Open(Options{DataDir: dir})
+			if err != nil {
+				t.Fatalf("reopen with garbage tail: %v", err)
+			}
+			defer func() { _ = db2.Close() }()
+			if v, ok := db2.Get("good"); !ok || v != "value" {
+				t.Fatalf("expected good=value after replay, got %q ok=%v", v, ok)
+			}
+		})
+	}
+}
+
 type denyGate struct{ reason string }
 
 func (d denyGate) Allow() (bool, string) { return false, d.reason }

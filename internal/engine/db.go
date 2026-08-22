@@ -884,11 +884,12 @@ func (db *DB) replayWAL() error {
 		keyLen := binary.LittleEndian.Uint32(lens[0:4])
 		valLen := binary.LittleEndian.Uint32(lens[4:8])
 
-		if keyLen == 0 {
-			return errors.New("wal record with empty key")
-		}
-		if keyLen > MaxKeyBytes || valLen > MaxValueBytes {
-			return errors.New("wal record exceeds size limits")
+		// appendWAL never writes an empty key or lengths over the limits,
+		// so this is a torn or zero-filled tail (a crash can leave the file
+		// extended before its data reaches disk). Stop as for a bad CRC
+		// rather than refusing to open the database.
+		if keyLen == 0 || keyLen > MaxKeyBytes || valLen > MaxValueBytes {
+			break
 		}
 
 		var crcBuf [4]byte
