@@ -862,6 +862,8 @@ func (db *DB) replayWAL() error {
 	}
 
 	r := bufio.NewReaderSize(db.walFile, 64*1024)
+	// good is the offset just past the last record that was applied.
+	var good int64
 
 	for {
 		opByte, err := r.ReadByte()
@@ -943,10 +945,26 @@ func (db *DB) replayWAL() error {
 		default:
 			return fmt.Errorf("wal unknown opcode: %d", opByte)
 		}
+		good += int64(len(lens)+1+len(crcBuf)) + int64(keyLen) + int64(valLen)
+	}
+
+	// Drop a torn tail before appending. Otherwise new records land after
+	// the garbage, and the next replay stops at the garbage and loses them.
+	size, err := db.walFile.Seek(0, io.SeekEnd)
+	if err != nil {
+		return fmt.Errorf("wal seek end: %w", err)
+	}
+	if good < size {
+		if err := db.walFile.Truncate(good); err != nil {
+			return fmt.Errorf("wal truncate torn tail: %w", err)
+		}
+		if err := db.walFile.Sync(); err != nil {
+			return fmt.Errorf("wal fsync after truncate: %w", err)
+		}
 	}
 
 	// Return to append mode.
-	if _, err := db.walFile.Seek(0, io.SeekEnd); err != nil {
+	if _, err := db.walFile.Seek(good, io.SeekStart); err != nil {
 		return fmt.Errorf("wal seek end: %w", err)
 	}
 	db.walW.Reset(db.walFile)

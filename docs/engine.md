@@ -32,7 +32,7 @@ Record format (little-endian):
 [1 byte opcode][4 byte keyLen][4 byte valLen][4 byte crc32c][key bytes][value bytes]
 ```
 
-CRC32C (Castagnoli) covers `opcode + keyLen + valLen + key + value`. On startup the engine replays the WAL into the memtable. If the last record has a bad CRC (the classic "torn write" after a power loss), replay stops cleanly at that point. Earlier records are kept. The corrupt tail is ignored.
+CRC32C (Castagnoli) covers `opcode + keyLen + valLen + key + value`. On startup the engine replays the WAL into the memtable. If the last record has a bad CRC (the classic "torn write" after a power loss), replay stops cleanly at that point. Earlier records are kept. The corrupt tail is truncated away so new writes are appended after the last good record.
 
 ### SSTables
 
@@ -111,7 +111,7 @@ After a clean shutdown via `Close()`:
 - The data directory is internally consistent
 
 After a hard crash (power loss, OOM kill):
-- WAL is replayed on next open. Bad CRC at the tail is treated as a torn write and replay stops there.
+- WAL is replayed on next open. A bad CRC or an impossible record header at the tail is treated as a torn write: replay stops there and the tail is truncated.
 - SSTables are immutable, so they can't be corrupted by an in-progress write. Worst case is a `.tmp` file from a failed flush. The engine ignores anything not ending in `.sst`.
 
 ## Range scans

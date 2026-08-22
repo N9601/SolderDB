@@ -444,6 +444,60 @@ func TestWALGarbageHeaderTailIsIgnored(t *testing.T) {
 	}
 }
 
+func TestWritesAfterTornTailSurviveReopen(t *testing.T) {
+	dir := t.TempDir()
+	walPath := filepath.Join(dir, "wal.bin")
+	db, err := Open(Options{DataDir: dir})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if err := db.Set("before", "1"); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	clean, err := os.Stat(walPath)
+	if err != nil {
+		t.Fatalf("stat wal: %v", err)
+	}
+
+	// Crash mid-append: opcode plus part of the lengths.
+	f, err := os.OpenFile(walPath, os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		t.Fatalf("open wal: %v", err)
+	}
+	if _, err := f.Write([]byte{1, 3, 0, 0}); err != nil {
+		t.Fatalf("write torn tail: %v", err)
+	}
+	_ = f.Close()
+
+	db2, err := Open(Options{DataDir: dir})
+	if err != nil {
+		t.Fatalf("reopen after crash: %v", err)
+	}
+	if fi, err := os.Stat(walPath); err != nil || fi.Size() != clean.Size() {
+		t.Fatalf("expected torn tail truncated to %d bytes, got %v (err %v)", clean.Size(), fi.Size(), err)
+	}
+	if err := db2.Set("after", "2"); err != nil {
+		t.Fatalf("set after crash: %v", err)
+	}
+	if err := db2.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	db3, err := Open(Options{DataDir: dir})
+	if err != nil {
+		t.Fatalf("second reopen: %v", err)
+	}
+	defer func() { _ = db3.Close() }()
+	for _, k := range []string{"before", "after"} {
+		if _, ok := db3.Get(k); !ok {
+			t.Fatalf("%s lost after reopen", k)
+		}
+	}
+}
+
 type denyGate struct{ reason string }
 
 func (d denyGate) Allow() (bool, string) { return false, d.reason }
