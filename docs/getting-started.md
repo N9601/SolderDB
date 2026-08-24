@@ -105,6 +105,7 @@ SolderDB/
 ├── sstables/        Immutable sorted-string tables
 ├── files/           Uploaded file blobs
 ├── snapshots/       Created via the Snapshot button
+├── LOCK             Held while a SolderDB process has the database open
 └── .secret          HMAC signing key (32 random bytes, do not share)
 ```
 

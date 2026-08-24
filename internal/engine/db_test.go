@@ -46,6 +46,27 @@ func TestWALReplay(t *testing.T) {
 	}
 }
 
+func TestDataDirIsLockedWhileOpen(t *testing.T) {
+	dir := t.TempDir()
+	db, err := Open(Options{DataDir: dir})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if db2, err := Open(Options{DataDir: dir}); err == nil {
+		_ = db2.Close()
+		_ = db.Close()
+		t.Fatalf("second Open of the same data dir should fail while the first is open")
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	db3, err := Open(Options{DataDir: dir})
+	if err != nil {
+		t.Fatalf("reopen after close: %v", err)
+	}
+	_ = db3.Close()
+}
+
 func TestFlushCreatesSSTableAndResetsWAL(t *testing.T) {
 	dir := t.TempDir()
 	// Small threshold so we can force a flush.

@@ -148,6 +148,7 @@ type DB struct {
 	compactMu sync.Mutex
 
 	dataDir string
+	lock    *os.File // held open for exclusive use of dataDir
 	walPath string
 	walFile *os.File
 	walW    *bufio.Writer
@@ -317,9 +318,17 @@ func Open(opts Options) (*DB, error) {
 		return nil, fmt.Errorf("create data dir: %w", err)
 	}
 
+	// Two processes on one data directory would interleave WAL appends and
+	// truncate each other's WAL on flush, so only one may open it.
+	lock, err := lockFile(filepath.Join(dataDir, "LOCK"))
+	if err != nil {
+		return nil, fmt.Errorf("lock data dir %s (is another SolderDB process using it?): %w", dataDir, err)
+	}
+
 	walPath := filepath.Join(dataDir, "wal.bin")
 	sstDir := filepath.Join(dataDir, "sstables")
 	if err := os.MkdirAll(sstDir, 0o755); err != nil {
+		_ = lock.Close()
 		return nil, fmt.Errorf("create sstable dir: %w", err)
 	}
 
@@ -327,16 +336,19 @@ func Open(opts Options) (*DB, error) {
 	// We maintain the file offset ourselves under db.mu.
 	f, err := os.OpenFile(walPath, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
+		_ = lock.Close()
 		return nil, fmt.Errorf("open wal: %w", err)
 	}
 	if _, err := f.Seek(0, io.SeekEnd); err != nil {
 		_ = f.Close()
+		_ = lock.Close()
 		return nil, fmt.Errorf("seek wal end: %w", err)
 	}
 
 	db := &DB{
 		memtable: make(map[string]memEntry),
 		dataDir:   dataDir,
+		lock:      lock,
 		walPath:   walPath,
 		walFile:   f,
 		walW:      bufio.NewWriterSize(f, 64*1024),
@@ -395,6 +407,11 @@ func (db *DB) Close() error {
 		_ = t.close()
 	}
 	db.sstables = nil
+
+	if db.lock != nil {
+		_ = db.lock.Close()
+		db.lock = nil
+	}
 	return firstErr
 }
 
