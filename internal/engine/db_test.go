@@ -498,6 +498,49 @@ func TestWritesAfterTornTailSurviveReopen(t *testing.T) {
 	}
 }
 
+func TestPartialSSTableFromCrashIsDiscarded(t *testing.T) {
+	dir := t.TempDir()
+	db, err := Open(Options{DataDir: dir, FlushThresholdBytes: 64})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if err := db.Set("flushed", strings.Repeat("x", 200)); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	sstDir := filepath.Join(dir, "sstables")
+	entries, err := os.ReadDir(sstDir)
+	if err != nil {
+		t.Fatalf("readdir: %v", err)
+	}
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".tmp") {
+			t.Fatalf("flush left a temp file behind: %s", e.Name())
+		}
+	}
+
+	// A crash mid-write leaves a half-written table in its temp file.
+	stray := filepath.Join(sstDir, sstFileName(1<<62, false)+".tmp")
+	if err := os.WriteFile(stray, []byte(sstMagic), 0o600); err != nil {
+		t.Fatalf("write stray: %v", err)
+	}
+
+	db2, err := Open(Options{DataDir: dir})
+	if err != nil {
+		t.Fatalf("reopen with partial table: %v", err)
+	}
+	defer func() { _ = db2.Close() }()
+	if _, err := os.Stat(stray); !os.IsNotExist(err) {
+		t.Fatalf("expected stray temp table to be removed, stat err=%v", err)
+	}
+	if _, ok := db2.Get("flushed"); !ok {
+		t.Fatalf("flushed key missing after reopen")
+	}
+}
+
 type denyGate struct{ reason string }
 
 func (d denyGate) Allow() (bool, string) { return false, d.reason }

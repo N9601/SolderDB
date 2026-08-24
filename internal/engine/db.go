@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -701,7 +702,7 @@ func (db *DB) Compact() error {
 	seq := tables[len(tables)-1].seq + 1
 	filename := sstFileName(seq, true)
 	newPath := filepath.Join(db.sstDir, filename)
-	if err := writeSSTable(newPath, out); err != nil {
+	if err := createSSTable(newPath, out); err != nil {
 		return err
 	}
 
@@ -1004,6 +1005,7 @@ const (
 	sstFlushPrefix   = "sst_"
 	sstCompactPrefix = "sst_compact_"
 	sstExt           = ".sst"
+	sstTmpExt        = ".tmp"
 )
 
 func sstFileName(seq uint64, compacted bool) string {
@@ -1086,6 +1088,12 @@ func (db *DB) loadSSTables() error {
 	db.sstables = nil
 	for _, e := range entries {
 		if e.IsDir() {
+			continue
+		}
+		if strings.HasSuffix(e.Name(), sstExt+sstTmpExt) {
+			// Left by a crash mid-write. Its records are still in the WAL
+			// (flush) or in the not yet deleted inputs (compaction).
+			_ = os.Remove(filepath.Join(db.sstDir, e.Name()))
 			continue
 		}
 		if filepath.Ext(e.Name()) != sstExt {
@@ -1435,7 +1443,7 @@ func (db *DB) flushMemtableToSSTableLocked() error {
 
 	path := filepath.Join(db.sstDir, sstFileName(db.nextFlushSeqLocked(), false))
 
-	if err := writeSSTable(path, records); err != nil {
+	if err := createSSTable(path, records); err != nil {
 		return err
 	}
 
@@ -1453,6 +1461,45 @@ func (db *DB) flushMemtableToSSTableLocked() error {
 		return err
 	}
 	return nil
+}
+
+// createSSTable writes records to path atomically. The table is built in a
+// temp file and fsynced, then renamed into place, and the directory is
+// fsynced so the rename survives a crash. A crash mid-write leaves only a
+// temp file, which loadSSTables removes, never a truncated .sst that would
+// make Open fail.
+func createSSTable(path string, records []sstRecord) error {
+	if _, err := os.Stat(path); err == nil {
+		return fmt.Errorf("create sstable: %s already exists", path)
+	}
+	tmp := path + sstTmpExt
+	if err := writeSSTable(tmp, records); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("rename sstable: %w", err)
+	}
+	if err := syncDir(filepath.Dir(path)); err != nil {
+		return fmt.Errorf("fsync sstable dir: %w", err)
+	}
+	return nil
+}
+
+// syncDir fsyncs a directory so entries created or renamed in it are
+// durable. Go cannot fsync a directory handle on Windows, where NTFS
+// journals the rename itself, so it is a no-op there.
+func syncDir(dir string) error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = d.Close() }()
+	return d.Sync()
 }
 
 func writeSSTable(path string, records []sstRecord) error {

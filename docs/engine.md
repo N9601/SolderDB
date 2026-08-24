@@ -112,7 +112,7 @@ After a clean shutdown via `Close()`:
 
 After a hard crash (power loss, OOM kill):
 - WAL is replayed on next open. A bad CRC or an impossible record header at the tail is treated as a torn write: replay stops there and the tail is truncated.
-- SSTables are immutable, so they can't be corrupted by an in-progress write. Worst case is a `.tmp` file from a failed flush. The engine ignores anything not ending in `.sst`.
+- SSTables are immutable and are written to a `.tmp` file that is fsynced and then renamed into place, so a crash mid-write never leaves a truncated `.sst`. Leftover `.tmp` files are deleted on the next open; their records are still in the WAL or in the compaction inputs.
 
 ## Range scans
 
