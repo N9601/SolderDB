@@ -377,6 +377,31 @@ func TestSnapshotCopiesWALAndSSTables(t *testing.T) {
 	}
 }
 
+func TestFailedSnapshotLeavesNoDirectory(t *testing.T) {
+	dir := t.TempDir()
+	db, err := Open(Options{DataDir: dir})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+	if err := db.Set("k", "v"); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+
+	// Make the WAL copy fail after the snapshot directory is created.
+	db.walPath = filepath.Join(dir, "missing-wal.bin")
+	if _, err := db.Snapshot(); err == nil {
+		t.Fatalf("expected snapshot to fail")
+	}
+	list, err := db.ListSnapshots()
+	if err != nil {
+		t.Fatalf("list snapshots: %v", err)
+	}
+	if len(list) != 0 {
+		t.Fatalf("failed snapshot left %d partial snapshot(s) behind: %+v", len(list), list)
+	}
+}
+
 func TestWALCorruptedTailIsIgnored(t *testing.T) {
 	dir := t.TempDir()
 	db, err := Open(Options{DataDir: dir})

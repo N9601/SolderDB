@@ -551,7 +551,7 @@ func (db *DB) Delete(key string) error {
 //
 // The lock is held for the duration of the copy so the snapshot is internally
 // consistent: no flush or compaction can run while files are being copied.
-func (db *DB) Snapshot() (string, error) {
+func (db *DB) Snapshot() (path string, err error) {
 	db.mu.Lock()
 	defer db.mu.Unlock()
 
@@ -567,10 +567,23 @@ func (db *DB) Snapshot() (string, error) {
 	}
 
 	ts := time.Now().UTC().Format("20060102-150405.000000000")
-	dst := filepath.Join(db.dataDir, "snapshots", ts)
-	if err := os.MkdirAll(dst, 0o755); err != nil {
+	parent := filepath.Join(db.dataDir, "snapshots")
+	if err := os.MkdirAll(parent, 0o755); err != nil {
 		return "", fmt.Errorf("snapshot mkdir: %w", err)
 	}
+	// Mkdir (not MkdirAll) so the cleanup below can only remove a
+	// directory this call created.
+	dst := filepath.Join(parent, ts)
+	if err := os.Mkdir(dst, 0o755); err != nil {
+		return "", fmt.Errorf("snapshot mkdir: %w", err)
+	}
+	// A half-copied snapshot would still be listed by ListSnapshots and
+	// look like a usable backup, so remove it if any copy fails.
+	defer func() {
+		if err != nil {
+			_ = os.RemoveAll(dst)
+		}
+	}()
 
 	if db.walPath != "" {
 		if err := copyFile(db.walPath, filepath.Join(dst, "wal.bin")); err != nil {
