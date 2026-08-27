@@ -331,7 +331,14 @@ func (s *Service) UpdateRecord(collection, id string, patch map[string]interface
 	for k, v := range patch {
 		merged[k] = v
 	}
-	if err := validateRecord(meta, merged); err != nil {
+	// Only the patched keys must match the current schema. Values already
+	// stored under fields that were since removed or retyped are kept as
+	// they are, otherwise any schema edit would make old records
+	// impossible to update.
+	if err := validateFieldValues(meta, patch); err != nil {
+		return Record{}, err
+	}
+	if err := validateRequired(meta, merged); err != nil {
 		return Record{}, err
 	}
 	rec.Data = coerceTypes(meta, merged)
@@ -434,6 +441,15 @@ func validateFields(fields []Field) error {
 }
 
 func validateRecord(meta CollectionMeta, data map[string]interface{}) error {
+	if err := validateFieldValues(meta, data); err != nil {
+		return err
+	}
+	return validateRequired(meta, data)
+}
+
+// validateFieldValues rejects keys that are not in the schema and values
+// of the wrong type.
+func validateFieldValues(meta CollectionMeta, data map[string]interface{}) error {
 	allowed := make(map[string]Field, len(meta.Fields))
 	for _, f := range meta.Fields {
 		allowed[f.Name] = f
@@ -447,6 +463,12 @@ func validateRecord(meta CollectionMeta, data map[string]interface{}) error {
 			return err
 		}
 	}
+	return nil
+}
+
+// validateRequired checks that every required field is present and
+// non-empty.
+func validateRequired(meta CollectionMeta, data map[string]interface{}) error {
 	for _, f := range meta.Fields {
 		if !f.Required {
 			continue

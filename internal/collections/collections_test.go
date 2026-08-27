@@ -119,6 +119,46 @@ func TestUpdateMergesAndRevalidates(t *testing.T) {
 	}
 }
 
+func TestUpdateAfterFieldRemovedFromSchema(t *testing.T) {
+	_, svc := openTestDB(t)
+	if _, err := svc.CreateCollection(CollectionMeta{
+		Name: "notes",
+		Fields: []Field{
+			{Name: "title", Type: FieldText, Required: true},
+			{Name: "legacy", Type: FieldText},
+		},
+	}); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	rec, err := svc.Insert("notes", map[string]interface{}{"title": "a", "legacy": "old"})
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	// Drop "legacy" from the schema; the stored value stays on the record.
+	if _, err := svc.UpdateCollection("notes", CollectionPatch{
+		Fields: []Field{{Name: "title", Type: FieldText, Required: true}},
+	}); err != nil {
+		t.Fatalf("update schema: %v", err)
+	}
+
+	got, err := svc.UpdateRecord("notes", rec.ID, map[string]interface{}{"title": "b"})
+	if err != nil {
+		t.Fatalf("update after field removal: %v", err)
+	}
+	if got.Data["title"] != "b" || got.Data["legacy"] != "old" {
+		t.Fatalf("unexpected data after update: %+v", got.Data)
+	}
+
+	// The patch itself is still validated against the current schema.
+	if _, err := svc.UpdateRecord("notes", rec.ID, map[string]interface{}{"legacy": "new"}); err == nil {
+		t.Fatalf("expected error when patching a removed field")
+	}
+	if _, err := svc.UpdateRecord("notes", rec.ID, map[string]interface{}{"title": ""}); err == nil {
+		t.Fatalf("expected error when clearing a required field")
+	}
+}
+
 func TestListRecordsSortedByID(t *testing.T) {
 	_, svc := openTestDB(t)
 	_, _ = svc.CreateCollection(CollectionMeta{
