@@ -59,14 +59,17 @@ func main() {
 	}
 	app.svc = svc
 	hub := realtime.NewHub()
-	colls := bridge.NewCollectionsService(svc.Engine())
+	// One collections service for both the REST API and the desktop UI, so
+	// edits made in the app publish realtime events too and schema changes
+	// from either side are serialized by the same lock.
+	apiColls := collections.New(svc.Engine())
+	apiColls.SetNotifier(realtime.CollectionsNotifier{Hub: hub})
+	colls := bridge.NewCollectionsService(apiColls)
 	hwSvc := bridge.NewHardwareService(svc.Engine())
 	var authBridge *bridge.AuthService
 
 	// Start the local REST API on 127.0.0.1:8787 so SDKs/CLIs/curl can hit it.
 	// AllowOrigin "*" is fine because we only listen on loopback.
-	apiColls := collections.New(svc.Engine())
-	apiColls.SetNotifier(realtime.CollectionsNotifier{Hub: hub})
 	authSvc, err := auth.New(svc.Engine(), apiColls, svc.Engine().DataDir())
 	if err != nil {
 		log.Fatalf("init auth: %v", err)

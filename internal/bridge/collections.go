@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"solderdb/internal/collections"
-	"solderdb/internal/engine"
 )
 
 // CollectionsService is exposed to Wails so the frontend can manage typed
@@ -13,8 +12,11 @@ type CollectionsService struct {
 	svc *collections.Service
 }
 
-func NewCollectionsService(db *engine.DB) *CollectionsService {
-	return &CollectionsService{svc: collections.New(db)}
+// NewCollectionsService wraps svc, which should be the same service the
+// REST API uses so desktop edits publish realtime events and share its
+// schema lock.
+func NewCollectionsService(svc *collections.Service) *CollectionsService {
+	return &CollectionsService{svc: svc}
 }
 
 // --- DTOs ---
@@ -226,6 +228,3 @@ func (c *CollectionsService) ListRecords(collection, after string, limit int) (L
 	}
 	return ListRecordsResult{Records: out, NextAfter: res.NextAfter}, nil
 }
-
-// DB exposes the underlying engine for re-binding via main.
-func (c *CollectionsService) bind() {}
