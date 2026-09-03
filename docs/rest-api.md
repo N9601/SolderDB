@@ -36,7 +36,7 @@ Authentication via `Authorization: Bearer <token>` header, or `?token=<token>` q
 | POST | `/api/files` | authed | multipart `file` or raw body with `X-Filename` | `FileMeta` |
 | GET | `/api/files/:id` | authed |  | raw bytes |
 | DELETE | `/api/files/:id` | admin |  | `{ deleted }` |
-| GET | `/api/kv/:key` | authed |  | `{ key, value }` |
+| GET | `/api/kv/:key` | admin |  | `{ key, value }` |
 | PUT | `/api/kv/:key` | admin | `{ value }` | `{ key }` |
 | DELETE | `/api/kv/:key` | admin |  | `{ deleted }` |
 | GET | `/api/realtime` | authed | `?topic=...` | SSE stream |

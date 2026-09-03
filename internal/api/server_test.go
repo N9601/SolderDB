@@ -541,6 +541,60 @@ func TestValidationErrors(t *testing.T) {
 	}
 }
 
+// registerUser registers a non-admin account (an admin must already exist)
+// and returns its token without touching testToken.
+func registerUser(t *testing.T, base, email string) string {
+	t.Helper()
+	saved := testToken
+	testToken = ""
+	code, body := doJSON(t, http.MethodPost, base+"/api/auth/register", map[string]any{
+		"email": email, "password": "anothersecret",
+	})
+	testToken = saved
+	if code != 201 {
+		t.Fatalf("register %s code=%d body=%s", email, code, body)
+	}
+	var sess struct {
+		Token string `json:"token"`
+		User  struct {
+			Role string `json:"role"`
+		} `json:"user"`
+	}
+	if err := json.Unmarshal(body, &sess); err != nil || sess.User.Role != "user" {
+		t.Fatalf("expected a regular user session, got %s (err %v)", body, err)
+	}
+	return sess.Token
+}
+
+func TestKVReadsRequireAdmin(t *testing.T) {
+	srv, cleanup := startTestServer(t)
+	defer cleanup()
+	base := "http://" + srv.Addr()
+	adminTok := registerAdminAndAuth(t, base)
+	userTok := registerUser(t, base, "user@test.local")
+
+	// Look up the admin's own user record key, which holds the bcrypt hash.
+	testToken = adminTok
+	code, body := doJSON(t, http.MethodGet, base+"/api/auth/me", nil)
+	if code != 200 {
+		t.Fatalf("me code=%d", code)
+	}
+	var me struct {
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal(body, &me)
+	key := "_coll:rec:_users:" + me.ID
+
+	testToken = userTok
+	if code, body := doJSON(t, http.MethodGet, base+"/api/kv/"+key, nil); code != 403 {
+		t.Fatalf("non-admin raw KV read should 403, got %d body=%s", code, body)
+	}
+	testToken = adminTok
+	if code, _ := doJSON(t, http.MethodGet, base+"/api/kv/"+key, nil); code != 200 {
+		t.Fatalf("admin raw KV read should 200, got %d", code)
+	}
+}
+
 func TestKVEndpoints(t *testing.T) {
 	srv, cleanup := startTestServer(t)
 	defer cleanup()

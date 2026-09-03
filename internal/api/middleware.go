@@ -171,11 +171,10 @@ func (s *Server) routePolicy(r *http.Request) policy {
 		return policyPublic // handler enforces per-collection rules
 	}
 
-	// Raw KV: any write is admin; reads authed.
+	// Raw KV: admin only, reads included. Every collection record, user
+	// password hash, and file entry is a plain key underneath, so a raw
+	// read would bypass collection rules and the internal-collection block.
 	if strings.HasPrefix(p, "/api/kv/") {
-		if m == http.MethodGet {
-			return policyAuthed
-		}
 		return policyAdmin
 	}
 
