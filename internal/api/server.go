@@ -294,6 +294,9 @@ func (s *Server) handleRealtime(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Set by authMiddleware; this route requires a signed-in user.
+	user, _ := r.Context().Value(ctxKeyUser).(auth.User)
+
 	topics := r.URL.Query()["topic"]
 	if len(topics) == 0 {
 		topics = []string{"*"}
@@ -324,6 +327,9 @@ func (s *Server) handleRealtime(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return
 			}
+			if !s.canReceive(user, evt) {
+				continue
+			}
 			b, err := json.Marshal(evt)
 			if err != nil {
 				continue
@@ -332,6 +338,45 @@ func (s *Server) handleRealtime(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 	}
+}
+
+// canReceive reports whether user may see evt on the realtime stream, using
+// the same policies as the REST routes. Admins see everything. Events that
+// are not about a collection (the activity log) and events on internal
+// collections are admin-only, except _files, which any signed-in user can
+// already list. Other collection events carry the record itself, so they
+// need both the collection's list and view rules to pass.
+func (s *Server) canReceive(user auth.User, evt realtime.Event) bool {
+	if s.auth == nil || user.Role == auth.RoleAdmin {
+		return true
+	}
+	switch {
+	case evt.Collection == "":
+		return false
+	case evt.Collection == files.FilesCollection:
+		return true
+	case strings.HasPrefix(evt.Collection, "_"):
+		return false
+	}
+	meta, err := s.colls.GetCollection(evt.Collection)
+	if err != nil {
+		return false
+	}
+	return ruleAllows(meta.ListRule, user) && ruleAllows(meta.ViewRule, user)
+}
+
+// ruleAllows evaluates a collection rule for an already-resolved user (the
+// zero User when anonymous).
+func ruleAllows(rule collections.Rule, user auth.User) bool {
+	switch rule.Normalize() {
+	case collections.RulePublic:
+		return true
+	case collections.RuleAuthed:
+		return user.ID != ""
+	case collections.RuleAdmin:
+		return user.Role == auth.RoleAdmin
+	}
+	return false
 }
 
 // ---------------- Auth handlers ----------------

@@ -181,6 +181,85 @@ func TestSSEReceivesCollectionEvents(t *testing.T) {
 	}
 }
 
+// readSSEUntil reads the stream until done reports true for everything read
+// so far, or fails the test after a timeout. It returns the text read.
+func readSSEUntil(t *testing.T, body io.Reader, done func(string) bool) string {
+	t.Helper()
+	result := make(chan string, 1)
+	go func() {
+		buf := make([]byte, 4096)
+		var carry string
+		for {
+			n, err := body.Read(buf)
+			carry += string(buf[:n])
+			if done(carry) || err != nil {
+				result <- carry
+				return
+			}
+		}
+	}()
+	select {
+	case got := <-result:
+		if !done(got) {
+			t.Fatalf("stream ended early, got:\n%s", got)
+		}
+		return got
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for SSE events")
+		return ""
+	}
+}
+
+func TestSSEFiltersEventsByAccess(t *testing.T) {
+	srv, cleanup := startTestServer(t)
+	defer cleanup()
+	// Mirror main.go: activity log entries are published on the hub.
+	srv.logs.SetPublisher(func(e logs.Entry) {
+		srv.hub.Publish("logs", realtime.Event{Kind: realtime.EventCreate, Data: e, Timestamp: e.Timestamp})
+	})
+	base := "http://" + srv.Addr()
+	adminTok := registerAdminAndAuth(t, base)
+	userTok := registerUser(t, base, "user@test.local")
+
+	for _, c := range []map[string]any{
+		{"name": "secret", "listRule": "admin", "viewRule": "admin",
+			"fields": []map[string]any{{"name": "x", "type": "text"}}},
+		{"name": "open",
+			"fields": []map[string]any{{"name": "x", "type": "text"}}},
+	} {
+		if code, body := doJSON(t, http.MethodPost, base+"/api/collections", c); code != 201 {
+			t.Fatalf("create %v code=%d body=%s", c["name"], code, body)
+		}
+	}
+
+	// A regular user subscribes to everything.
+	resp, err := http.Get(base + "/api/realtime?topic=*&token=" + userTok)
+	if err != nil {
+		t.Fatalf("sse: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != 200 {
+		t.Fatalf("sse code=%d", resp.StatusCode)
+	}
+	readSSEUntil(t, resp.Body, func(s string) bool { return strings.Contains(s, ": connected") })
+
+	// A new registration writes a _users record (with its password hash).
+	registerUser(t, base, "other@test.local")
+	testToken = adminTok
+	for _, coll := range []string{"secret", "open"} {
+		if code, body := doJSON(t, http.MethodPost, base+"/api/collections/"+coll+"/records", map[string]any{"x": coll}); code != 201 {
+			t.Fatalf("insert into %s code=%d body=%s", coll, code, body)
+		}
+	}
+
+	got := readSSEUntil(t, resp.Body, func(s string) bool { return strings.Contains(s, `"collection":"open"`) })
+	for _, leak := range []string{`"collection":"_users"`, "password_hash", `"collection":"secret"`, `"method":`} {
+		if strings.Contains(got, leak) {
+			t.Fatalf("regular user received %s over SSE:\n%s", leak, got)
+		}
+	}
+}
+
 func TestCollectionRulesEnforced(t *testing.T) {
 	srv, cleanup := startTestServer(t)
 	defer cleanup()

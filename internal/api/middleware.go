@@ -147,7 +147,7 @@ func (s *Server) routePolicy(r *http.Request) policy {
 	case "/api/health", "/api/auth/login", "/api/auth/register":
 		return policyPublic
 	case "/api/realtime":
-		return policyAuthed // valid user can subscribe to anything (v1)
+		return policyAuthed // events are filtered per user in handleRealtime
 	}
 
 	// Collection schema mutations require admin; reads and record CRUD do not.

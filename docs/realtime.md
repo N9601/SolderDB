@@ -40,6 +40,10 @@ The hub matches topics by **prefix segments**, separated by `:`. A subscriber to
 | `logs`                 | Every API request (admin-only, used by the Activity view)   |
 | `*` or `coll:*`        | Wildcard (matches anything with the prefix)                 |
 
+## Who receives what
+
+The stream only carries events the subscriber could read over REST. Admins receive everything. A regular user receives events from a collection only when both its `listRule` and `viewRule` allow them, plus file events on `coll:_files`. Activity log entries (`logs`) and the other internal collections, such as `_users`, are admin-only. Events a subscriber may not see are skipped, so subscribing to `*` never leaks data.
+
 ## Browser (EventSource)
 
 `EventSource` can't set headers, so pass the token in the query string:
