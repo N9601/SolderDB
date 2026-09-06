@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -671,6 +672,43 @@ func TestKVReadsRequireAdmin(t *testing.T) {
 	testToken = adminTok
 	if code, _ := doJSON(t, http.MethodGet, base+"/api/kv/"+key, nil); code != 200 {
 		t.Fatalf("admin raw KV read should 200, got %d", code)
+	}
+}
+
+// repeatByte is an endless reader of one byte value.
+type repeatByte byte
+
+func (b repeatByte) Read(p []byte) (int, error) {
+	for i := range p {
+		p[i] = byte(b)
+	}
+	return len(p), nil
+}
+
+func TestDecodeBodyRejectsOversizedBody(t *testing.T) {
+	body := io.MultiReader(
+		strings.NewReader(`{"value":"`),
+		io.LimitReader(repeatByte('x'), maxJSONBody),
+		strings.NewReader(`"}`),
+	)
+	req := httptest.NewRequest(http.MethodPut, "/api/kv/big", body)
+	rec := httptest.NewRecorder()
+	var v struct {
+		Value string `json:"value"`
+	}
+	err := decodeBody(rec, req, &v)
+	if err == nil {
+		t.Fatalf("expected an error for a body over %d bytes", maxJSONBody)
+	}
+	writeDecodeError(rec, err)
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected 413, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// A small body still decodes.
+	req = httptest.NewRequest(http.MethodPut, "/api/kv/small", strings.NewReader(`{"value":"ok"}`))
+	if err := decodeBody(httptest.NewRecorder(), req, &v); err != nil || v.Value != "ok" {
+		t.Fatalf("small body: value=%q err=%v", v.Value, err)
 	}
 }
 

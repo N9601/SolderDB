@@ -56,6 +56,7 @@ Authentication via `Authorization: Bearer <token>` header, or `?token=<token>` q
 | 403 | Token valid but role insufficient (admin required) |
 | 404 | Resource not found |
 | 405 | Method not allowed on that path |
+| 413 | JSON request body larger than 64 MB |
 | 500 | Internal error |
 
 ## Object shapes

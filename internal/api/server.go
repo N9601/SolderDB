@@ -394,8 +394,8 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		Email    string `json:"email"`
 		Password string `json:"password"`
 	}
-	if err := decodeBody(r, &body); err != nil {
-		writeError(w, 400, err.Error())
+	if err := decodeBody(w, r, &body); err != nil {
+		writeDecodeError(w, err)
 		return
 	}
 	sess, err := s.auth.Register(body.Email, body.Password)
@@ -419,8 +419,8 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		Email    string `json:"email"`
 		Password string `json:"password"`
 	}
-	if err := decodeBody(r, &body); err != nil {
-		writeError(w, 400, err.Error())
+	if err := decodeBody(w, r, &body); err != nil {
+		writeDecodeError(w, err)
 		return
 	}
 	sess, err := s.auth.Login(body.Email, body.Password)
@@ -449,8 +449,8 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		Current string `json:"current"`
 		Next    string `json:"next"`
 	}
-	if err := decodeBody(r, &body); err != nil {
-		writeError(w, 400, err.Error())
+	if err := decodeBody(w, r, &body); err != nil {
+		writeDecodeError(w, err)
 		return
 	}
 	u, err := s.auth.ChangePassword(user.ID, body.Current, body.Next)
@@ -570,8 +570,8 @@ func (s *Server) handleCollections(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, list)
 	case http.MethodPost:
 		var meta collections.CollectionMeta
-		if err := decodeBody(r, &meta); err != nil {
-			writeError(w, 400, err.Error())
+		if err := decodeBody(w, r, &meta); err != nil {
+			writeDecodeError(w, err)
 			return
 		}
 		created, err := s.colls.CreateCollection(meta)
@@ -603,8 +603,8 @@ func (s *Server) handleCollection(w http.ResponseWriter, r *http.Request, name s
 			UpdateRule string              `json:"updateRule"`
 			DeleteRule string              `json:"deleteRule"`
 		}
-		if err := decodeBody(r, &body); err != nil {
-			writeError(w, 400, err.Error())
+		if err := decodeBody(w, r, &body); err != nil {
+			writeDecodeError(w, err)
 			return
 		}
 		patch := collections.CollectionPatch{Fields: body.Fields}
@@ -680,8 +680,8 @@ func (s *Server) handleRecords(w http.ResponseWriter, r *http.Request, coll stri
 			return
 		}
 		var data map[string]any
-		if err := decodeBody(r, &data); err != nil {
-			writeError(w, 400, err.Error())
+		if err := decodeBody(w, r, &data); err != nil {
+			writeDecodeError(w, err)
 			return
 		}
 		rec, err := s.colls.Insert(coll, data)
@@ -721,8 +721,8 @@ func (s *Server) handleRecord(w http.ResponseWriter, r *http.Request, coll, id s
 			return
 		}
 		var patch map[string]any
-		if err := decodeBody(r, &patch); err != nil {
-			writeError(w, 400, err.Error())
+		if err := decodeBody(w, r, &patch); err != nil {
+			writeDecodeError(w, err)
 			return
 		}
 		rec, err := s.colls.UpdateRecord(coll, id, patch)
@@ -764,8 +764,8 @@ func (s *Server) handleKV(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Value string `json:"value"`
 		}
-		if err := decodeBody(r, &body); err != nil {
-			writeError(w, 400, err.Error())
+		if err := decodeBody(w, r, &body); err != nil {
+			writeDecodeError(w, err)
 			return
 		}
 		if err := s.db.Set(key, body.Value); err != nil {
@@ -811,14 +811,34 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 
-func decodeBody(r *http.Request, v any) error {
+// maxJSONBody caps JSON request bodies. A stored record can never exceed
+// the engine's value limit, so nothing legitimate is larger, and without a
+// cap any client could make the server buffer an unbounded body.
+const maxJSONBody = engine.MaxValueBytes
+
+func decodeBody(w http.ResponseWriter, r *http.Request, v any) error {
 	if r.Body == nil {
 		return errors.New("empty body")
 	}
-	dec := json.NewDecoder(r.Body)
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxJSONBody))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(v); err != nil {
+		var tooBig *http.MaxBytesError
+		if errors.As(err, &tooBig) {
+			return fmt.Errorf("request body exceeds %d bytes: %w", tooBig.Limit, err)
+		}
 		return fmt.Errorf("invalid JSON: %w", err)
 	}
 	return nil
+}
+
+// writeDecodeError reports a decodeBody failure: 413 for an oversized body,
+// 400 for anything else.
+func writeDecodeError(w http.ResponseWriter, err error) {
+	var tooBig *http.MaxBytesError
+	if errors.As(err, &tooBig) {
+		writeError(w, http.StatusRequestEntityTooLarge, err.Error())
+		return
+	}
+	writeError(w, 400, err.Error())
 }
