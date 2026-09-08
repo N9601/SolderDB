@@ -261,6 +261,34 @@ func TestSSEFiltersEventsByAccess(t *testing.T) {
 	}
 }
 
+func TestLogEntriesRecordUser(t *testing.T) {
+	srv, cleanup := startTestServer(t)
+	defer cleanup()
+	base := "http://" + srv.Addr()
+	registerAdminAndAuth(t, base)
+
+	if code, _ := doJSON(t, http.MethodGet, base+"/api/collections", nil); code != 200 {
+		t.Fatalf("list collections code=%d", code)
+	}
+	code, body := doJSON(t, http.MethodGet, base+"/api/logs", nil)
+	if code != 200 {
+		t.Fatalf("logs code=%d body=%s", code, body)
+	}
+	var entries []logs.Entry
+	if err := json.Unmarshal(body, &entries); err != nil {
+		t.Fatalf("decode logs: %v", err)
+	}
+	for _, e := range entries {
+		if e.Path == "/api/collections" {
+			if e.User != "admin@test.local" {
+				t.Fatalf("expected log entry user admin@test.local, got %q", e.User)
+			}
+			return
+		}
+	}
+	t.Fatalf("no log entry for /api/collections in %s", body)
+}
+
 func TestCollectionRulesEnforced(t *testing.T) {
 	srv, cleanup := startTestServer(t)
 	defer cleanup()

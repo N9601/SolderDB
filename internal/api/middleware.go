@@ -85,11 +85,13 @@ func (s *Server) logMiddleware(next http.Handler) http.Handler {
 		rec := &statusRecorder{ResponseWriter: w, status: 200}
 		start := time.Now()
 		next.ServeHTTP(rec, r)
+		// authMiddleware runs inside this handler and attaches the user to
+		// its own derived request, which is not visible on r, so resolve
+		// the token here. This also covers record routes, whose rules are
+		// checked in the handlers rather than the middleware.
 		var user string
-		if v := r.Context().Value(ctxKeyUser); v != nil {
-			if u, ok := v.(auth.User); ok {
-				user = u.Email
-			}
+		if u, ok := s.currentUser(r); ok {
+			user = u.Email
 		}
 		s.logs.Append(logs.Entry{
 			Method:     r.Method,
