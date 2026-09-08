@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"mime"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -102,6 +103,64 @@ func TestFilesUploadDownloadDelete(t *testing.T) {
 	code, _ = doJSON(t, http.MethodGet, base+"/api/files/"+meta.ID, nil)
 	if code != 404 {
 		t.Fatalf("expected 404 after delete, got %d", code)
+	}
+}
+
+func TestFileDownloadHeaders(t *testing.T) {
+	srv, cleanup := startTestServer(t)
+	defer cleanup()
+	base := "http://" + srv.Addr()
+	registerAdminAndAuth(t, base)
+
+	upload := func(name, mimeType string) string {
+		t.Helper()
+		req, _ := http.NewRequest(http.MethodPost, base+"/api/files", strings.NewReader("<script>alert(1)</script>"))
+		req.Header.Set("Content-Type", mimeType)
+		req.Header.Set("X-Filename", name)
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("upload: %v", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		var meta struct{ ID string }
+		if err := json.NewDecoder(resp.Body).Decode(&meta); err != nil || resp.StatusCode != 201 {
+			t.Fatalf("upload %s code=%d err=%v", name, resp.StatusCode, err)
+		}
+		return meta.ID
+	}
+	download := func(id string) http.Header {
+		t.Helper()
+		req, _ := http.NewRequest(http.MethodGet, base+"/api/files/"+id, nil)
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("download: %v", err)
+		}
+		_ = resp.Body.Close()
+		return resp.Header
+	}
+
+	for _, c := range []struct {
+		name, mimeType, disposition string
+	}{
+		{`page "one".html`, "text/html", "attachment"},
+		{"drawing.svg", "image/svg+xml", "attachment"},
+		{"photo.png", "image/png", "inline"},
+		{"notes.txt", "text/plain; charset=utf-8", "inline"},
+	} {
+		h := download(upload(c.name, c.mimeType))
+		if got := h.Get("X-Content-Type-Options"); got != "nosniff" {
+			t.Errorf("%s: X-Content-Type-Options=%q, want nosniff", c.name, got)
+		}
+		disp, params, err := mime.ParseMediaType(h.Get("Content-Disposition"))
+		if err != nil {
+			t.Errorf("%s: unparsable Content-Disposition %q: %v", c.name, h.Get("Content-Disposition"), err)
+			continue
+		}
+		if disp != c.disposition || params["filename"] != c.name {
+			t.Errorf("%s: got %s filename=%q, want %s", c.name, disp, params["filename"], c.disposition)
+		}
 	}
 }
 

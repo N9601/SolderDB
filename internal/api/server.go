@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net"
 	"net/http"
 	"strconv"
@@ -250,7 +251,10 @@ func (s *Server) handleFileItem(w http.ResponseWriter, r *http.Request) {
 		defer func() { _ = rc.Close() }()
 		w.Header().Set("Content-Type", m.MimeType)
 		w.Header().Set("Content-Length", strconv.FormatInt(m.Size, 10))
-		w.Header().Set("Content-Disposition", `inline; filename="`+m.Name+`"`)
+		w.Header().Set("Content-Disposition", contentDisposition(m.MimeType, m.Name))
+		// The stored type comes from the uploader. Without nosniff a browser
+		// may guess HTML or script from the bytes.
+		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-File-SHA256", m.SHA256)
 		w.WriteHeader(200)
 		_, _ = io.Copy(w, rc)
@@ -263,6 +267,29 @@ func (s *Server) handleFileItem(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeError(w, 405, "method not allowed")
 	}
+}
+
+// contentDisposition builds the header for a file download. Only types a
+// browser displays without running script are served inline; anything else
+// (HTML, SVG, XML, unknown types) is an attachment, so an uploaded page
+// cannot run script on the API origin, where it could read the ?token=
+// from its own URL. <img> and <video> tags are unaffected either way. The
+// file name is quoted and escaped by mime.FormatMediaType.
+func contentDisposition(mimeType, name string) string {
+	disposition := "attachment"
+	if mt, _, err := mime.ParseMediaType(mimeType); err == nil {
+		switch {
+		case mt == "image/svg+xml":
+			// SVG can carry script, so it stays an attachment.
+		case strings.HasPrefix(mt, "image/"), strings.HasPrefix(mt, "audio/"), strings.HasPrefix(mt, "video/"),
+			mt == "text/plain", mt == "application/pdf", mt == "application/json":
+			disposition = "inline"
+		}
+	}
+	if v := mime.FormatMediaType(disposition, map[string]string{"filename": name}); v != "" {
+		return v
+	}
+	return disposition
 }
 
 // ---------------- Realtime (SSE) ----------------

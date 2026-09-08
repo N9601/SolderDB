@@ -68,11 +68,14 @@ const url = db.files.url(meta.id);  // includes ?token=
 Response headers include:
 
 ```
-Content-Type:        <stored MIME>
-Content-Length:      <byte size>
-Content-Disposition: inline; filename="<original>"
-X-File-SHA256:       <hex digest>
+Content-Type:           <stored MIME>
+Content-Length:         <byte size>
+Content-Disposition:    inline; filename="<original>"
+X-Content-Type-Options: nosniff
+X-File-SHA256:          <hex digest>
 ```
+
+Images (except SVG), audio, video, plain text, PDF and JSON are served `inline`. Every other type, including HTML and SVG, is served as an `attachment`, so an uploaded page can't run script on the API's origin. `<img>` and `<video>` tags work the same either way.
 
 ## List
 
