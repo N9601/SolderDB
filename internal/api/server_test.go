@@ -762,6 +762,30 @@ func TestKVReadsRequireAdmin(t *testing.T) {
 	}
 }
 
+func TestCORSPreflightCoversAPISurface(t *testing.T) {
+	s := &Server{cfg: Config{AllowOrigin: "*"}}
+	h := s.withMiddleware(http.NotFoundHandler())
+
+	req := httptest.NewRequest(http.MethodOptions, "/api/kv/foo", nil)
+	req.Header.Set("Origin", "http://localhost:5173")
+	req.Header.Set("Access-Control-Request-Method", http.MethodPut)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != 204 {
+		t.Fatalf("preflight code=%d", rec.Code)
+	}
+	if got := rec.Header().Get("Access-Control-Allow-Methods"); !strings.Contains(got, "PUT") {
+		t.Fatalf("PUT /api/kv/:key not allowed cross-origin: %q", got)
+	}
+	if got := rec.Header().Get("Access-Control-Allow-Headers"); !strings.Contains(got, "X-Filename") {
+		t.Fatalf("raw uploads need X-Filename allowed: %q", got)
+	}
+	if got := rec.Header().Get("Access-Control-Expose-Headers"); !strings.Contains(got, "X-File-SHA256") {
+		t.Fatalf("X-File-SHA256 not exposed: %q", got)
+	}
+}
+
 // repeatByte is an endless reader of one byte value.
 type repeatByte byte
 

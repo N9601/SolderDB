@@ -817,8 +817,9 @@ func (s *Server) withMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.cfg.AllowOrigin != "" {
 			w.Header().Set("Access-Control-Allow-Origin", s.cfg.AllowOrigin)
-			w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Filename")
+			w.Header().Set("Access-Control-Expose-Headers", "X-File-SHA256")
 			if r.Method == http.MethodOptions {
 				w.WriteHeader(204)
 				return
