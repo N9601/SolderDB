@@ -29,8 +29,9 @@ func (m *linuxMonitor) Read() Status {
 				st.BatteryKnown = true
 				st.BatteryPct = cap
 			}
-			// "Discharging" or "Not charging" → on battery.
-			st.OnBattery = status == "Discharging" || status == "Not charging"
+			// Only "Discharging" means unplugged. "Not charging" is reported
+			// on AC when the battery is full or held at a charge limit.
+			st.OnBattery = status == "Discharging"
 			break
 		}
 		// Cross-check via AC adapter if no battery info contradicted.
