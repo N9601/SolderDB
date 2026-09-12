@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -67,6 +68,11 @@ type Service struct {
 	db     *engine.DB
 	colls  *collections.Service
 	secret []byte
+
+	// regMu serializes the duplicate check, the first-user check and the
+	// insert in Register, so concurrent sign-ups can neither both become
+	// admin nor both claim the same email.
+	regMu sync.Mutex
 }
 
 func New(db *engine.DB, colls *collections.Service, dataDir string) (*Service, error) {
@@ -106,18 +112,29 @@ func (s *Service) Register(email, password string) (Session, error) {
 	if len(password) < 8 {
 		return Session{}, errors.New("password must be at least 8 characters")
 	}
-	// Cheap uniqueness check, full unique-constraint indexing is future work.
-	if u, err := s.findByEmail(email); err == nil && u != nil {
-		return Session{}, errors.New("email already registered")
-	}
-
+	// Hash before taking the lock; bcrypt is the slow part.
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), BcryptCost)
 	if err != nil {
 		return Session{}, fmt.Errorf("hash password: %w", err)
 	}
+
+	s.regMu.Lock()
+	defer s.regMu.Unlock()
+
+	// Cheap uniqueness check, full unique-constraint indexing is future work.
+	if u, err := s.findByEmail(email); err != nil {
+		return Session{}, err
+	} else if u != nil {
+		return Session{}, errors.New("email already registered")
+	}
 	// First registered user becomes admin. Everyone else is a regular user.
+	// A failed count must not fall through to admin.
+	count, err := s.userCount()
+	if err != nil {
+		return Session{}, err
+	}
 	role := RoleUser
-	if count, _ := s.userCount(); count == 0 {
+	if count == 0 {
 		role = RoleAdmin
 	}
 
