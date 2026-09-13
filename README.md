@@ -188,8 +188,12 @@ defer stop()
 
 ### CLI
 
+The CLI module points at the in-repo Go SDK with a `replace` directive, so build it from a clone (`go install ...@latest` refuses modules with `replace`):
+
 ```bash
-go install github.com/N9601/SolderDB/cmd/solderdb-cli@latest
+git clone https://github.com/N9601/SolderDB.git
+cd SolderDB/cmd/solderdb-cli
+go build -o solderdb .    # solderdb.exe on Windows; put it on your PATH
 
 solderdb register you@example.com supersecret
 solderdb coll create notes title:text:required pinned:bool
