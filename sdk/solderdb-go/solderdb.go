@@ -215,17 +215,7 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any)
 
 	respBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		msg := ""
-		var errObj struct {
-			Error string `json:"error"`
-		}
-		if json.Unmarshal(respBody, &errObj) == nil {
-			msg = errObj.Error
-		}
-		if msg == "" {
-			msg = strings.TrimSpace(string(respBody))
-		}
-		return &APIError{Status: resp.StatusCode, Message: msg}
+		return newAPIError(resp.StatusCode, respBody)
 	}
 	if out != nil && len(respBody) > 0 {
 		if err := json.Unmarshal(respBody, out); err != nil {
@@ -233,6 +223,22 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any)
 		}
 	}
 	return nil
+}
+
+// newAPIError builds an APIError from a non-2xx response, preferring the
+// server's {"error": "..."} message over the raw body.
+func newAPIError(status int, body []byte) *APIError {
+	msg := ""
+	var errObj struct {
+		Error string `json:"error"`
+	}
+	if json.Unmarshal(body, &errObj) == nil {
+		msg = errObj.Error
+	}
+	if msg == "" {
+		msg = strings.TrimSpace(string(body))
+	}
+	return &APIError{Status: status, Message: msg}
 }
 
 // ---------------- Auth ----------------
@@ -311,27 +317,46 @@ func (col *CollectionAPI) Delete(ctx context.Context, id string) error {
 }
 
 // Subscribe streams realtime events for this collection until ctx is
-// cancelled or the connection closes. handler runs synchronously per event.
-// Returns a stop function that cancels the subscription.
+// cancelled, stop is called, or the connection closes. handler runs
+// synchronously per event, on its own goroutine.
+//
+// The stream is opened before Subscribe returns, so a refused subscription
+// (for example a 401 with a missing or expired token) is reported as an
+// error instead of silently delivering nothing. The returned stop function
+// is never nil and is safe to call more than once.
 func (col *CollectionAPI) Subscribe(ctx context.Context, handler func(Event)) (func(), error) {
 	subCtx, cancel := context.WithCancel(ctx)
-	go col.streamLoop(subCtx, "coll:"+col.Name, handler)
+	resp, err := col.openStream(subCtx, "coll:"+col.Name)
+	if err != nil {
+		cancel()
+		return cancel, err
+	}
+	go col.streamLoop(subCtx, resp, handler)
 	return cancel, nil
 }
 
-func (col *CollectionAPI) streamLoop(ctx context.Context, topic string, handler func(Event)) {
+func (col *CollectionAPI) openStream(ctx context.Context, topic string) (*http.Response, error) {
 	u := col.c.URL("/api/realtime?topic="+url.QueryEscape(topic), true)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
-		return
+		return nil, err
 	}
 	if tok := col.c.Token(); tok != "" {
 		req.Header.Set("Authorization", "Bearer "+tok)
 	}
 	resp, err := col.c.HTTP.Do(req)
 	if err != nil {
-		return
+		return nil, err
 	}
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+		_ = resp.Body.Close()
+		return nil, newAPIError(resp.StatusCode, body)
+	}
+	return resp, nil
+}
+
+func (col *CollectionAPI) streamLoop(ctx context.Context, resp *http.Response, handler func(Event)) {
 	defer func() { _ = resp.Body.Close() }()
 
 	br := bufio.NewReader(resp.Body)
