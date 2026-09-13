@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -60,5 +61,30 @@ func TestSubscribeDeliversEvents(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("no event delivered")
+	}
+}
+
+func TestUploadEscapesFileName(t *testing.T) {
+	const name = `report "final" v2.txt`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, hdr, err := r.FormFile("file")
+		if err != nil {
+			http.Error(w, `{"error":"bad multipart"}`, http.StatusBadRequest)
+			return
+		}
+		if hdr.Filename != name {
+			t.Errorf("server saw filename %q, want %q", hdr.Filename, name)
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = fmt.Fprintf(w, `{"id":"f1","name":%q}`, hdr.Filename)
+	}))
+	defer srv.Close()
+
+	meta, err := New(srv.URL).Files.Upload(context.Background(), name, strings.NewReader("data"), "text/plain")
+	if err != nil {
+		t.Fatalf("upload: %v", err)
+	}
+	if meta.ID != "f1" {
+		t.Fatalf("unexpected meta %+v", meta)
 	}
 }

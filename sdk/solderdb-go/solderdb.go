@@ -442,13 +442,17 @@ func (f *FilesAPI) List(ctx context.Context, opts ListOptions) ([]FileMeta, stri
 	return out.Files, out.NextAfter, nil
 }
 
+// quoteEscaper escapes a value for a quoted multipart header parameter,
+// the same way mime/multipart does for CreateFormFile.
+var quoteEscaper = strings.NewReplacer("\\", "\\\\", `"`, "\\\"")
+
 // Upload streams r to the server as a multipart upload.
 func (f *FilesAPI) Upload(ctx context.Context, name string, r io.Reader, mimeType string) (FileMeta, error) {
 	buf := &bytes.Buffer{}
 	mw := multipart.NewWriter(buf)
 
 	hdr := make(map[string][]string)
-	hdr["Content-Disposition"] = []string{`form-data; name="file"; filename="` + name + `"`}
+	hdr["Content-Disposition"] = []string{`form-data; name="file"; filename="` + quoteEscaper.Replace(name) + `"`}
 	if mimeType != "" {
 		hdr["Content-Type"] = []string{mimeType}
 	}
