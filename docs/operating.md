@@ -30,7 +30,7 @@ Restore by stopping the app and replacing the data directory.
 
 Multiple SSTables accumulate after many flushes. Compact them periodically:
 
-- **Manually:** click **Compact** in the topbar, or hit `POST /api/collections/.../compact`
+- **Manually:** click **Compact** in the topbar, or run **Compact SSTables** from the Cmd+K palette. There is no REST endpoint for compaction in v1
 - **Hardware-aware:** the engine refuses to compact when you're under battery or temperature thresholds. Set those in **Dashboard > Hardware-Aware Compaction**
 
 There's no automatic compaction schedule in v1. You decide when.

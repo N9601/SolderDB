@@ -81,7 +81,7 @@ Newest-first ordering means later writes shadow earlier writes. Same key in two 
 
 Multiple SSTables hurt reads (more files to check). **Compaction** merges them. Oldest-to-newest into a single in-memory map (so newer values overwrite older ones), then serialized as one new SSTable. Old SSTables are then deleted.
 
-Compaction is **not automatic** in v1. You trigger it via the `Compact SSTables` button in the GUI, or `POST /api/collections/.../compact` for admins. (Auto-compaction is on the v1.x roadmap.)
+Compaction is **not automatic** in v1. You trigger it from the GUI: the **Compact** button in the top bar, or **Compact SSTables** in the Cmd+K palette. There is no REST endpoint for it in v1. (Auto-compaction is on the v1.x roadmap.)
 
 ## Hardware-aware compaction
 
