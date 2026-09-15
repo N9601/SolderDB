@@ -6,7 +6,7 @@
 
 ![Version](https://img.shields.io/badge/Version-1.0.0-e07a25?style=flat-square)
 ![Engine](https://img.shields.io/badge/Engine-LSM%20from%20scratch-5b6b8a?style=flat-square)
-![Language](https://img.shields.io/badge/Go-1.22%2B-00ADD8?style=flat-square&logo=go&logoColor=white)
+![Language](https://img.shields.io/badge/Go-1.25%2B-00ADD8?style=flat-square&logo=go&logoColor=white)
 ![Frontend](https://img.shields.io/badge/React-TS%20strict-61DAFB?style=flat-square&logo=react&logoColor=black)
 ![Wails](https://img.shields.io/badge/Wails-v2-DF0000?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-16a34a?style=flat-square)

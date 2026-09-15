@@ -6,7 +6,7 @@ This repo is intended to run as a Wails v2 desktop app:
 
 ## Install prerequisites
 
-1) Install Go (1.22+).
+1) Install Go (1.25+, as required by `go.mod`).
 2) Install Wails CLI v2:
 
 ```powershell
