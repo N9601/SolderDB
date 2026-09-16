@@ -289,7 +289,8 @@ Tests:
 
 ```bash
 go test ./...
-cd frontend && npx tsc --noEmit && npm run build
+wails generate module    # TS bindings in frontend/src/wailsjs (git-ignored, also made by wails dev/build)
+cd frontend && npm ci && npx tsc --noEmit && npm run build
 ```
 
 Release build:
