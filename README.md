@@ -75,7 +75,7 @@ Single binary. Your machine. Nothing leaves the box.
 
 ### Collections
 - Typed records (`text`, `number`, `bool`, `json`, `date`)
-- Schema editor with required and unique fields
+- Schema editor with required fields (the `unique` flag is stored but not enforced yet, see the roadmap)
 - **Per-op access rules** of `public`, `authed`, or `admin` on each of `list`, `view`, `create`, `update`, `delete`
 - Time-sortable ULID-style IDs
 - Range scans with `Start` and `End` bounds
