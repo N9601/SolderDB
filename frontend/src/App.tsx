@@ -707,7 +707,7 @@ function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
         <header className="flex h-14 items-center justify-between border-b border-canvas-200 bg-white px-6">
           <div className="flex items-center gap-3">
             <h1 className="text-[15px] font-semibold text-ink-900">
-              {NAV.find((n) => n.id === nav)?.label}
+              {nav === "profile" ? "Profile" : NAV.find((n) => n.id === nav)?.label}
             </h1>
             {apiAddr && (
               <a
