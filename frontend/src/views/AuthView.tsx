@@ -75,7 +75,7 @@ export default function AuthView(props: { onSignedIn: (sess: bridge.Session) => 
             <Feature label="LSM engine · Memtable + WAL + SSTables" />
             <Feature label="CRC32C-checked log · bloom-filtered reads" />
             <Feature label="Hardware-aware compaction" />
-            <Feature label="REST + WebSocket realtime on localhost:8787" />
+            <Feature label="REST + SSE realtime on localhost:8787" />
             <Feature label="JS & Go SDKs · CLI · Postman-style explorer" />
           </div>
         </aside>

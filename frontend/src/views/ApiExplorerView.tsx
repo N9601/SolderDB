@@ -30,11 +30,11 @@ const ENDPOINTS: Endpoint[] = [
   { id: "del-coll", method: "DELETE", path: "/api/collections/:name", title: "Delete collection", description: "Admin, also deletes every record.", group: "Collections" },
 
   // Records
-  { id: "list-recs", method: "GET", path: "/api/collections/:name/records?limit=50", title: "List records", description: "Authed, paginated.", group: "Records" },
-  { id: "create-rec", method: "POST", path: "/api/collections/:name/records", title: "Create record", description: "Authed.", group: "Records", defaultBody: `{\n  "title": "hello"\n}` },
-  { id: "get-rec", method: "GET", path: "/api/collections/:name/records/:id", title: "Get record", description: "Authed.", group: "Records" },
-  { id: "patch-rec", method: "PATCH", path: "/api/collections/:name/records/:id", title: "Update record", description: "Authed, partial patch.", group: "Records", defaultBody: `{\n  "title": "updated"\n}` },
-  { id: "del-rec", method: "DELETE", path: "/api/collections/:name/records/:id", title: "Delete record", description: "Authed.", group: "Records" },
+  { id: "list-recs", method: "GET", path: "/api/collections/:name/records?limit=50", title: "List records", description: "Per-collection rule (default authed), paginated.", group: "Records" },
+  { id: "create-rec", method: "POST", path: "/api/collections/:name/records", title: "Create record", description: "Per-collection rule (default authed).", group: "Records", defaultBody: `{\n  "title": "hello"\n}` },
+  { id: "get-rec", method: "GET", path: "/api/collections/:name/records/:id", title: "Get record", description: "Per-collection rule (default authed).", group: "Records" },
+  { id: "patch-rec", method: "PATCH", path: "/api/collections/:name/records/:id", title: "Update record", description: "Per-collection rule (default authed), partial patch.", group: "Records", defaultBody: `{\n  "title": "updated"\n}` },
+  { id: "del-rec", method: "DELETE", path: "/api/collections/:name/records/:id", title: "Delete record", description: "Per-collection rule (default authed).", group: "Records" },
 
   // Files
   { id: "list-files", method: "GET", path: "/api/files?limit=50", title: "List files", description: "Authed.", group: "Files" },
@@ -42,7 +42,7 @@ const ENDPOINTS: Endpoint[] = [
   { id: "del-file", method: "DELETE", path: "/api/files/:id", title: "Delete file", description: "Admin.", group: "Files" },
 
   // KV
-  { id: "kv-get", method: "GET", path: "/api/kv/:key", title: "Get key", description: "Authed.", group: "KV" },
+  { id: "kv-get", method: "GET", path: "/api/kv/:key", title: "Get key", description: "Admin.", group: "KV" },
   { id: "kv-put", method: "PUT", path: "/api/kv/:key", title: "Set key", description: "Admin.", group: "KV", defaultBody: `{ "value": "hello" }` },
   { id: "kv-del", method: "DELETE", path: "/api/kv/:key", title: "Delete key", description: "Admin.", group: "KV" },
 
