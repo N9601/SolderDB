@@ -1,0 +1,89 @@
+name: CI
+
+# Vets and tests every Go module, type-checks and builds the frontend and the
+# JS SDK on Windows (the shipping platform, and the one Wails builds without
+# extra system packages), and runs the backend tests under the race detector
+# on Linux.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Build and test (Windows)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Go vet
+        run: go vet ./...
+
+      - name: Go test
+        run: go test ./...
+
+      - name: Go SDK and CLI
+        run: |
+          (cd sdk/solderdb-go && go vet ./... && go test ./...)
+          (cd cmd/solderdb-cli && go vet ./... && go build ./...)
+
+      # The frontend imports Wails-generated bindings from frontend/src/wailsjs,
+      # which are git-ignored.
+      - name: Generate Wails bindings
+        run: |
+          go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+          wails generate module
+
+      - name: Frontend type check and build
+        working-directory: frontend
+        run: |
+          npm ci
+          npx tsc --noEmit
+          npm run build
+
+      - name: JS SDK type check
+        working-directory: sdk/solderdb-js
+        run: |
+          npm install --no-audit --no-fund
+          npx tsc --noEmit
+
+  linux-race:
+    name: Backend tests with race detector (Linux)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # The root package needs the Wails Linux toolchain (GTK/WebKit headers),
+      # so this job covers everything below it.
+      - name: Go vet
+        run: go vet ./internal/... ./tools/...
+
+      - name: Go test (race)
+        run: go test -race ./internal/...
