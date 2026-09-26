@@ -1,6 +1,7 @@
 package collections
 
 import (
+	"sort"
 	"testing"
 
 	"solderdb/internal/engine"
@@ -184,6 +185,51 @@ func TestListRecordsSortedByID(t *testing.T) {
 		if res.Records[i-1].ID >= res.Records[i].ID {
 			t.Fatalf("records not in sorted ID order: %s >= %s", res.Records[i-1].ID, res.Records[i].ID)
 		}
+	}
+}
+
+func TestListRecordsPaginatesByID(t *testing.T) {
+	_, svc := openTestDB(t)
+	if _, err := svc.CreateCollection(CollectionMeta{
+		Name:   "events",
+		Fields: []Field{{Name: "n", Type: FieldNumber}},
+	}); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	var ids []string
+	for i := 0; i < 5; i++ {
+		rec, err := svc.Insert("events", map[string]interface{}{"n": float64(i)})
+		if err != nil {
+			t.Fatalf("insert: %v", err)
+		}
+		ids = append(ids, rec.ID)
+	}
+	sort.Strings(ids)
+
+	page1, err := svc.ListRecords("events", "", 2)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(page1.Records) != 2 || page1.NextAfter != ids[1] {
+		t.Fatalf("page 1: got %d records, nextAfter=%q; want 2 and %q", len(page1.Records), page1.NextAfter, ids[1])
+	}
+
+	// The cursor is a record ID, so a client can also resume after any ID it saw.
+	page2, err := svc.ListRecords("events", page1.NextAfter, 10)
+	if err != nil {
+		t.Fatalf("list page 2: %v", err)
+	}
+	if len(page2.Records) != 3 || page2.Records[0].ID != ids[2] || page2.NextAfter != "" {
+		t.Fatalf("page 2: got %+v", page2)
+	}
+
+	// A full storage key (the old cursor shape) still works.
+	legacy, err := svc.ListRecords("events", recKey("events", ids[3]), 10)
+	if err != nil {
+		t.Fatalf("list legacy cursor: %v", err)
+	}
+	if len(legacy.Records) != 1 || legacy.Records[0].ID != ids[4] {
+		t.Fatalf("legacy cursor: got %+v", legacy)
 	}
 }
 

@@ -361,12 +361,20 @@ func (s *Service) DeleteRecord(collection, id string) error {
 	return nil
 }
 
+// ListRecords returns up to limit records with IDs greater than after, in
+// ID (creation) order. after and NextAfter are record IDs. A full storage
+// key is still accepted as after, for clients that echoed back the old
+// key-shaped cursor.
 func (s *Service) ListRecords(collection string, after string, limit int) (ListResult, error) {
 	if limit <= 0 {
 		limit = 50
 	}
+	prefix := recScanPrefix(collection)
+	if after != "" && !strings.HasPrefix(after, prefix) {
+		after = prefix + after
+	}
 	scanRes, err := s.db.Scan(engine.ScanOptions{
-		Prefix: recScanPrefix(collection),
+		Prefix: prefix,
 		After:  after,
 		Limit:  limit,
 	})
@@ -385,7 +393,7 @@ func (s *Service) ListRecords(collection string, after string, limit int) (ListR
 		}
 		out = append(out, rec)
 	}
-	return ListResult{Records: out, NextAfter: scanRes.NextAfter}, nil
+	return ListResult{Records: out, NextAfter: strings.TrimPrefix(scanRes.NextAfter, prefix)}, nil
 }
 
 // ---------------- internals ----------------
