@@ -13,12 +13,13 @@ All three must pass clean.
 
 ## Version bump
 
-A major or minor release updates the version string in **three** places:
+Every release, patch releases included, updates the app version in **three** places, which must match:
 
-1. `frontend/package.json` (`version`)
+1. `frontend/package.json` (`version`, plus the matching root entries in `frontend/package-lock.json`)
 2. `wails.json` (`info.productVersion`)
-3. `frontend/src/App.tsx` (the sidebar footer `v0.X.Y`)
-4. `sdk/solderdb-js/package.json` (`version`, if the SDK contract changed)
+3. `frontend/src/App.tsx` (the sidebar footer `vX.Y.Z`)
+
+Bump `sdk/solderdb-js/package.json` (`version`) separately, only when the SDK contract changed.
 
 Also append a section to `CHANGELOG.md` summarizing what shipped.
 
