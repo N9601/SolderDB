@@ -9,4 +9,6 @@
 /sdk/solderdb-js/dist/
 /sdk/solderdb-js/package-lock.json
 *.exe
-
+/build/bin/
+/build/windows/installer/tmp/
+/cmd/solderdb-cli/solderdb
