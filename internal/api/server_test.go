@@ -348,6 +348,30 @@ func TestLogEntriesRecordUser(t *testing.T) {
 	t.Fatalf("no log entry for /api/collections in %s", body)
 }
 
+func TestStopEndsRealtimeStreams(t *testing.T) {
+	srv, cleanup := startTestServer(t)
+	defer cleanup()
+	base := "http://" + srv.Addr()
+	token := registerAdminAndAuth(t, base)
+
+	resp, err := http.Get(base + "/api/realtime?token=" + token)
+	if err != nil {
+		t.Fatalf("sse: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	readSSEUntil(t, resp.Body, func(s string) bool { return strings.Contains(s, ": connected") })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	start := time.Now()
+	if err := srv.Stop(ctx); err != nil {
+		t.Fatalf("stop with an open SSE stream: %v (after %v)", err, time.Since(start))
+	}
+	if d := time.Since(start); d > time.Second {
+		t.Fatalf("stop took %v; open streams should end immediately", d)
+	}
+}
+
 func TestCollectionRulesEnforced(t *testing.T) {
 	srv, cleanup := startTestServer(t)
 	defer cleanup()

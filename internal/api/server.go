@@ -58,10 +58,17 @@ func New(db *engine.DB, colls *collections.Service, authSvc *auth.Service, hub *
 	}
 	s := &Server{cfg: cfg, db: db, colls: colls, auth: authSvc, hub: hub, files: fileSvc, logs: logBuf, mux: http.NewServeMux()}
 	s.routes()
+	// Every request context derives from baseCtx. Shutdown waits for active
+	// requests, and SSE handlers only return when their context ends, so
+	// cancel it as soon as Shutdown starts instead of waiting out the
+	// caller's timeout.
+	baseCtx, cancelRequests := context.WithCancel(context.Background())
 	s.srv = &http.Server{
 		Handler:           s.withMiddleware(s.logMiddleware(s.authMiddleware(s.mux))),
 		ReadHeaderTimeout: 10 * time.Second,
+		BaseContext:       func(net.Listener) context.Context { return baseCtx },
 	}
+	s.srv.RegisterOnShutdown(cancelRequests)
 	return s
 }
 
