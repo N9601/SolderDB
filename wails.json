@@ -16,7 +16,7 @@
   "info": {
     "companyName": "SolderDB",
     "productName": "SolderDB",
-    "productVersion": "1.0.0",
+    "productVersion": "1.0.1",
     "copyright": "© 2026 SolderDB. MIT Licensed.",
     "comments": "Local-first single-binary database. LSM engine + REST + auth + realtime, built from scratch in Go."
   }

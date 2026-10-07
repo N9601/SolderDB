@@ -2,6 +2,42 @@
 
 All notable changes are tracked here. SolderDB follows [Semantic Versioning](https://semver.org/).
 
+## [1.0.1] - 2026-10-09
+
+Bug fix and hardening release. No format changes; existing data directories open as before.
+
+### Engine
+- A key deleted after it was flushed is no longer readable until the next flush
+- SSTables are ordered by sequence number, so a compacted table can no longer shadow newer writes (or resurrect deleted keys) after a restart
+- Writes flushed while a compaction runs are kept instead of being dropped along with their file
+- Reads that overlap a compaction no longer hit closed files and report live keys as missing
+- A torn or zero-filled WAL tail no longer stops the database from opening, and it is truncated so writes made after the crash survive the next restart
+- SSTables are written to a temp file and renamed into place, so a crash mid-flush cannot leave a table that blocks startup
+- Keys over 16 MB and values over 64 MB are rejected on write instead of making the WAL unreadable
+- The data directory is locked while open, so a second SolderDB process cannot share and corrupt the WAL
+- A failed snapshot no longer leaves a partial directory that is listed as a backup
+
+### Security
+- Raw KV reads (`GET /api/kv/:key`) are admin-only. Regular users could read any record through them, including password hashes
+- Realtime streams only carry events the subscriber is allowed to read. Regular users subscribed to `*` previously received every `_users` record with its password hash, admin-only collections, and the activity log
+- Uploaded files are served with `X-Content-Type-Options: nosniff`, and only script-free types inline, so an uploaded HTML or SVG file cannot run script on the API origin
+- JSON request bodies are capped at 64 MB
+- Concurrent registrations can no longer create several admins or duplicate accounts
+
+### Collections, API and realtime
+- Records stay editable after a field is removed from the schema
+- List cursors (`after`, `nextAfter`) are record IDs, as documented
+- Edits made in the desktop app publish realtime events
+- Activity log entries record the user behind each request
+- Shutting down no longer waits out its timeout while realtime streams are open
+- CORS preflight allows `PUT` and `X-Filename`, and exposes `X-File-SHA256`
+
+### SDKs, UI and tooling
+- Go SDK: `Subscribe` reports a refused stream as an error, and upload file names are escaped
+- Settings curl examples send the bearer token; the sign-in screen names SSE, not WebSocket; the Profile page has a title
+- CI workflow for the Go modules, the frontend and the JS SDK, with race-detector tests on Linux
+- Docs corrected: CLI install steps, Go 1.25 requirement, test steps, compaction endpoint, unique fields
+
 ## [1.0.0] - 2026-05-27
 
 First stable release. Everything below is included.

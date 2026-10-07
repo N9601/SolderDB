@@ -659,7 +659,7 @@ function AppShell(props: { user: bridgeNS.User; onSignOut: () => void }) {
                 </span>
               </button>
               <div className="flex items-center justify-between text-[10px] text-canvas-300">
-                <span className="font-mono">v1.0.0</span>
+                <span className="font-mono">v1.0.1</span>
                 <span className="chip-mono inline-flex items-center gap-1.5 text-canvas-200">
                   <span className={`dot ${writePulse ? "" : "dot-idle"}`} />
                   {writePulse ? "WRITE" : "IDLE"}
@@ -1303,10 +1303,14 @@ DELETE /api/kv/:key`}
               <div className="label">Try it</div>
               <pre className="mt-2 font-mono text-[11.5px] text-ink-700">
 {`curl ${props.apiAddr}/api/health
+
+# TOKEN: your session token (copy it from Profile)
 curl -X POST ${props.apiAddr}/api/collections \\
+  -H "Authorization: Bearer $TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '{"name":"notes","fields":[{"name":"title","type":"text","required":true}]}'
 curl -X POST ${props.apiAddr}/api/collections/notes/records \\
+  -H "Authorization: Bearer $TOKEN" \\
   -H "Content-Type: application/json" -d '{"title":"hello from curl"}'`}
               </pre>
             </div>
